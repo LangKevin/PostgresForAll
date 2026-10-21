@@ -1,11 +1,10 @@
 package com.postgresforall.app;
 
-import com.formdev.flatlaf.FlatLightLaf;
-import com.formdev.flatlaf.themes.FlatMacLightLaf;
 import com.postgresforall.app.cli.CheckCommand;
 import com.postgresforall.app.ui.LoginDialog;
 import com.postgresforall.app.ui.MainFrame;
 import com.postgresforall.app.ui.Ui;
+import com.postgresforall.app.ui.theme.Theme;
 import com.postgresforall.core.config.AppConfig;
 import com.postgresforall.core.model.DiscoveredServer;
 import com.postgresforall.core.model.ServerSource;
@@ -15,8 +14,6 @@ import com.postgresforall.core.service.PasswordStore;
 import com.postgresforall.core.service.ServerRegistry;
 
 import javax.swing.SwingUtilities;
-import javax.swing.UIManager;
-import java.awt.Color;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 
@@ -46,11 +43,7 @@ public final class Main {
     }
 
     private static void startGui() {
-        if (Platform.isMac()) FlatMacLightLaf.setup();
-        else FlatLightLaf.setup();
-        UIManager.put("Table.alternateRowColor", new Color(246, 246, 246));
-        UIManager.put("TabbedPane.showTabSeparators", true);
-        UIManager.put("Tree.showDefaultIcons", false);
+        Theme.init(Theme.Mode.parse(AppSettings.load().appearance));
 
         var passwords = new PasswordStore();
         var login = new LoginDialog(passwords);

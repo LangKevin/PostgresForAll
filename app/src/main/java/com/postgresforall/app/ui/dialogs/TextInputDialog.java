@@ -53,11 +53,11 @@ public final class TextInputDialog extends BaseDialog {
         if (msg == null) {
             ok.setEnabled(!entry.getText().isBlank());
             body.setText(bodyText);
-            body.setForeground(Palette.DIM_GRAY);
+            body.setForeground(Palette.muted());
         } else {
             ok.setEnabled(false);
             body.setText(msg);
-            body.setForeground(Palette.FIREBRICK);
+            body.setForeground(Palette.danger());
         }
     }
 

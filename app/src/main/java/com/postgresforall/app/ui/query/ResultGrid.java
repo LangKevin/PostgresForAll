@@ -53,7 +53,7 @@ public final class ResultGrid extends JPanel {
         var title = new JLabel("Result set " + index + " — " + truncate(statement, 80));
         title.setFont(title.getFont().deriveFont(Font.BOLD));
         var count = new JLabel(String.format("%,d row(s)", rows.size()));
-        count.setForeground(Palette.DIM_GRAY);
+        count.setForeground(Palette.muted());
         strip.add(title, BorderLayout.CENTER);
         strip.add(count, BorderLayout.EAST);
         add(strip, BorderLayout.NORTH);
@@ -115,7 +115,7 @@ public final class ResultGrid extends JPanel {
             setHorizontalAlignment(value instanceof Number ? SwingConstants.RIGHT : SwingConstants.LEFT);
             if (value == null) {
                 setFont(getFont().deriveFont(Font.ITALIC));
-                if (!sel) setForeground(Palette.GRAY);
+                if (!sel) setForeground(Palette.subtle());
             } else if (!sel) {
                 setForeground(t.getForeground());
             }

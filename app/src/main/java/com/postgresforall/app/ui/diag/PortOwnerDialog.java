@@ -44,7 +44,7 @@ public final class PortOwnerDialog extends BaseDialog {
                         + "Identify it below — kill it only if you're sure.", 56),
                 center);
         killBtn = addButton("Kill process", this::onKill);
-        killBtn.setForeground(Palette.FIREBRICK);
+        killBtn.setForeground(Palette.danger());
         addButton("Re-check", this::refresh);
         var close = addButton("Close", this::cancel);
         getRootPane().setDefaultButton(close);
@@ -72,7 +72,7 @@ public final class PortOwnerDialog extends BaseDialog {
         list.removeAll();
         if (found.isEmpty()) {
             var empty = new JLabel("Nothing is currently using this port.");
-            empty.setForeground(Palette.DIM_GRAY);
+            empty.setForeground(Palette.muted());
             list.add(empty);
         }
         for (var o : found) {
@@ -84,7 +84,7 @@ public final class PortOwnerDialog extends BaseDialog {
                     + Ui.escapeHtml(o.processName()) + "</b></html>"));
             if (!o.detail().isBlank()) {
                 var d = new JLabel(o.detail());
-                d.setForeground(Palette.GRAY);
+                d.setForeground(Palette.subtle());
                 row.add(d);
             }
             list.add(row);

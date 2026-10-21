@@ -25,7 +25,7 @@ final class ExplorerRenderer extends DefaultTreeCellRenderer {
 
         var fg = sel ? UIManager.getColor("Tree.selectionForeground") : n.foreground;
         var nameColor = fg == null ? "" : " color='" + Palette.hex(fg) + "'";
-        var detailColor = sel ? nameColor : " color='" + Palette.hex(Palette.GRAY) + "'";
+        var detailColor = sel ? nameColor : " color='" + Palette.hex(Palette.subtle()) + "'";
         var italic = n.kind == ExplorerNode.Kind.LOADING || n.kind == ExplorerNode.Kind.PLACEHOLDER;
         var name = Ui.escapeHtml(n.name);
         var sb = new StringBuilder("<html><span style='white-space:nowrap'>");

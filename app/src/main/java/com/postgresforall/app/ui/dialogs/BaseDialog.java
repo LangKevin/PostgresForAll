@@ -68,7 +68,7 @@ public abstract class BaseDialog extends JDialog {
         t.setWrapStyleWord(true);
         t.setColumns(columns);
         t.setFont(UIManager.getFont("Label.font"));
-        t.setForeground(Palette.DIM_GRAY);
+        t.setForeground(Palette.muted());
         t.setBorder(null);
         return t;
     }

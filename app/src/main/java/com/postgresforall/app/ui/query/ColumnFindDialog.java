@@ -34,7 +34,7 @@ final class ColumnFindDialog extends JDialog {
 
         var header = new JLabel(String.format("Find in column '%s' (%,d rows)", grid.columnName(column), grid.rows().size()));
         header.setFont(header.getFont().deriveFont(Font.BOLD));
-        status.setForeground(Palette.DIM_GRAY);
+        status.setForeground(Palette.muted());
 
         var center = new JPanel(new BorderLayout(0, 6));
         center.add(entry, BorderLayout.NORTH);

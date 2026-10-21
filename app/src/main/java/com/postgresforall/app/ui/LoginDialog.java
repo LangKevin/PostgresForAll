@@ -164,7 +164,7 @@ public final class LoginDialog extends JDialog {
         status.setWrapStyleWord(true);
         status.setFocusable(false);
         status.setFont(UIManager.getFont("Label.font"));
-        status.setForeground(Palette.DARK_SLATE_GRAY);
+        status.setForeground(Palette.muted());
         center.add(status, BorderLayout.SOUTH);
         root.add(center, BorderLayout.CENTER);
 
@@ -374,6 +374,6 @@ public final class LoginDialog extends JDialog {
 
     private void setStatus(String text, boolean error) {
         status.setText(text);
-        status.setForeground(error ? Palette.FIREBRICK : Palette.DARK_SLATE_GRAY);
+        status.setForeground(error ? Palette.danger() : Palette.muted());
     }
 }

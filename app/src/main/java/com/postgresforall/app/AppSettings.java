@@ -14,6 +14,8 @@ import java.nio.file.Path;
 public final class AppSettings {
     public String lastBackupFolder;
     public String lastRestoreFolder;
+    /** Theme mode: "system" (default), "light" or "dark". */
+    public String appearance;
 
     private static Path filePath() {
         return AppPaths.dataDir().resolve("settings.json");

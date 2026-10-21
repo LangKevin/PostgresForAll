@@ -73,7 +73,7 @@ public final class OperationOutputPanel extends JPanel {
         header.add(btns, BorderLayout.EAST);
 
         progress.setPreferredSize(new java.awt.Dimension(100, 14));
-        progressText.setForeground(Palette.DIM_GRAY);
+        progressText.setForeground(Palette.muted());
         progressRow.add(progress, BorderLayout.CENTER);
         progressRow.add(progressText, BorderLayout.EAST);
         progressRow.setVisible(false);
@@ -88,7 +88,7 @@ public final class OperationOutputPanel extends JPanel {
         add(new JScrollPane(output), BorderLayout.CENTER);
 
         statsLine.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-        statsLine.setForeground(Palette.DIM_GRAY);
+        statsLine.setForeground(Palette.muted());
         statsLine.setBorder(BorderFactory.createEmptyBorder(3, 6, 3, 6));
         add(statsLine, BorderLayout.SOUTH);
     }
@@ -169,9 +169,9 @@ public final class OperationOutputPanel extends JPanel {
 
     private void appendLine(OperationEvent evt) {
         var color = switch (evt.severity()) {
-            case ERROR -> Palette.FIREBRICK;
-            case WARN -> Palette.DARK_ORANGE;
-            case SUCCESS -> Palette.FOREST_GREEN;
+            case ERROR -> Palette.danger();
+            case WARN -> Palette.warning();
+            case SUCCESS -> Palette.success();
             case INFO -> getForeground();
         };
         var tag = switch (evt.severity()) {
@@ -182,7 +182,7 @@ public final class OperationOutputPanel extends JPanel {
         };
         var doc = output.getStyledDocument();
         try {
-            doc.insertString(doc.getLength(), STAMP.format(LocalDateTime.now()) + "  ", attrs(Palette.GRAY, false));
+            doc.insertString(doc.getLength(), STAMP.format(LocalDateTime.now()) + "  ", attrs(Palette.subtle(), false));
             doc.insertString(doc.getLength(), tag + "  ", attrs(color, true));
             doc.insertString(doc.getLength(), evt.text() + "\n", attrs(color, false));
             lineCount++;

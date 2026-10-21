@@ -324,12 +324,12 @@ public final class ObjectExplorer implements AutoCloseable {
                 }
             }
             case FAILED -> {
-                node.foreground = Palette.FIREBRICK;
+                node.foreground = Palette.danger();
                 node.toolTip = session.lastError();
                 node.loaded = true;
             }
             default -> {
-                node.foreground = Palette.GRAY;
+                node.foreground = Palette.subtle();
                 node.toolTip = Boolean.FALSE.equals(s.serviceRunning())
                         ? Platform.current().nativeServiceNoun() + " '" + s.service() + "' is stopped."
                         : null;
@@ -401,7 +401,7 @@ public final class ObjectExplorer implements AutoCloseable {
                 // Every connectable database is expandable — expanding opens a lease on demand.
                 node.withLoader(n -> loadDatabaseChildren(n, t));
             } else {
-                node.foreground = Palette.LIGHT_GRAY;
+                node.foreground = Palette.disabled();
                 node.loaded = true;
             }
             nodes.add(node);
@@ -428,7 +428,7 @@ public final class ObjectExplorer implements AutoCloseable {
                 var n = new ExplorerNode(Kind.SERVER, session.server().address(),
                         "couldn't list databases: " + ConnectionErrors.message(ex), null, null, session);
                 n.loaded = true;
-                n.foreground = Palette.FIREBRICK;
+                n.foreground = Palette.danger();
                 return List.of(n);
             }
         }
@@ -469,7 +469,7 @@ public final class ObjectExplorer implements AutoCloseable {
         var ctx = getOrOpenContext(t, info.name());
         if (ctx == null) {
             // Cancelled credential prompt, or no CONNECT privilege. Refresh retries.
-            return List.of(ExplorerNode.placeholder("(no access — right-click Refresh to retry)", Palette.GRAY));
+            return List.of(ExplorerNode.placeholder("(no access — right-click Refresh to retry)", Palette.subtle()));
         }
         var session = t.session;
         var schemasFolder = ExplorerNode.folder(Kind.SCHEMAS_FOLDER, "Schemas", info.name(), session);
@@ -556,7 +556,7 @@ public final class ObjectExplorer implements AutoCloseable {
             try {
                 kids = loader.load(node);
             } catch (Exception ex) {
-                kids = List.of(ExplorerNode.placeholder("(error) " + ConnectionErrors.message(ex), Palette.FIREBRICK));
+                kids = List.of(ExplorerNode.placeholder("(error) " + ConnectionErrors.message(ex), Palette.danger()));
             }
             var result = kids;
             Ui.later(() -> {

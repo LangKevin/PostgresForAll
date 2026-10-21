@@ -116,7 +116,7 @@ public final class QueryTab extends JPanel {
         loadBtn.setToolTipText("Replace this tab's contents with a file from disk.");
         loadBtn.addActionListener(e -> loadFile());
         strip.add(loadBtn);
-        statusLabel.setForeground(Palette.DIM_GRAY);
+        statusLabel.setForeground(Palette.muted());
         strip.add(statusLabel);
         add(strip, BorderLayout.NORTH);
 
@@ -143,9 +143,9 @@ public final class QueryTab extends JPanel {
 
         // ---- results -----------------------------------------------------
         capBanner.setOpaque(true);
-        capBanner.setBackground(Palette.CAP_BANNER);
+        capBanner.setBackground(Palette.bannerInfo());
         capBanner.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(Palette.CAP_BANNER_BORDER),
+                BorderFactory.createLineBorder(Palette.bannerInfoBorder()),
                 BorderFactory.createEmptyBorder(4, 8, 4, 8)));
         capBanner.setVisible(false);
         var resultsPanel = new JPanel(new BorderLayout(0, 4));
@@ -304,11 +304,11 @@ public final class QueryTab extends JPanel {
         var m = manager;
         chip.setText("DB: " + connectionLabel());
         if (ok) {
-            chip.color = Palette.SEA_GREEN;
+            chip.color = Palette.success();
             chip.setToolTipText("<html>Connected: " + Ui.escapeHtml(m.profile().username + "@" + m.profile().host + ":"
                     + m.profile().port + "/" + currentDatabase) + "<br>PostgreSQL " + m.serverVersion() + "</html>");
         } else {
-            chip.color = Palette.FIREBRICK;
+            chip.color = Palette.danger();
             chip.setToolTipText(error != null ? error : "Connection failed.");
         }
         chip.repaint();
@@ -473,9 +473,9 @@ public final class QueryTab extends JPanel {
 
     private void appendMessage(Message m) {
         var color = switch (m.severity()) {
-            case ERROR -> Palette.FIREBRICK;
-            case WARNING -> Palette.DARK_ORANGE;
-            case NOTICE -> new Color(30, 90, 160);
+            case ERROR -> Palette.danger();
+            case WARNING -> Palette.warning();
+            case NOTICE -> Palette.notice();
             case INFO -> messages.getForeground();
         };
         var doc = messages.getStyledDocument();
@@ -555,10 +555,10 @@ public final class QueryTab extends JPanel {
 
     /** Rounded "DB: 5444 / scheduleme" badge, green when connected, red on failure. */
     private static final class ChipLabel extends JLabel {
-        Color color = Palette.SEA_GREEN;
+        Color color = Palette.success();
 
         ChipLabel() {
-            setForeground(Color.WHITE);
+            setForeground(Palette.chipText());
             setFont(getFont().deriveFont(Font.BOLD, getFont().getSize2D() - 1f));
             setBorder(BorderFactory.createEmptyBorder(2, 9, 2, 9));
         }

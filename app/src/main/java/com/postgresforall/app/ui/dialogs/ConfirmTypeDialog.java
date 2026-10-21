@@ -16,7 +16,7 @@ public final class ConfirmTypeDialog extends BaseDialog {
         var text = wrappingText(body, 48);
         build(header, text, entry);
         JButton confirm = addButton("Confirm", this::accept);
-        confirm.setForeground(Palette.FIREBRICK);
+        confirm.setForeground(Palette.danger());
         confirm.setEnabled(false);
         addButton("Cancel", this::cancel);
         entry.getDocument().addDocumentListener(new DocumentListener() {

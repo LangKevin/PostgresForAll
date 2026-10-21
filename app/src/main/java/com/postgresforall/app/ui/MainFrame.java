@@ -412,7 +412,7 @@ public final class MainFrame extends JFrame {
         Ui.bgQuiet(() -> {
             if (manager == null || session.state() != State.CONNECTED) {
                 Ui.edt(() -> {
-                    healthDot.setForeground(Palette.LIGHT_GRAY);
+                    healthDot.setForeground(Palette.disabled());
                     healthDot.setToolTipText(html(session.server().address() + " is not connected.\nClick to open diagnostics."));
                 });
                 return;
@@ -423,14 +423,14 @@ public final class MainFrame extends JFrame {
                 var ms = (System.nanoTime() - t0) / 1e6;
                 lastHealthOk = LocalDateTime.now();
                 Ui.edt(() -> {
-                    healthDot.setForeground(Palette.FOREST_GREEN);
+                    healthDot.setForeground(Palette.success());
                     healthDot.setToolTipText(html(String.format("%s healthy — %,.0f ms%nLast OK: %s%nClick to open diagnostics.",
                             session.server().address(), ms, HMS.format(lastHealthOk))));
                 });
             } catch (Exception ex) {
                 var last = lastHealthOk;
                 Ui.edt(() -> {
-                    healthDot.setForeground(Palette.FIREBRICK);
+                    healthDot.setForeground(Palette.danger());
                     healthDot.setToolTipText(html(session.server().address() + " connection failed: "
                             + ConnectionErrors.message(ex) + "\n"
                             + (last == null ? "Never confirmed OK." : "Last OK: " + HMS.format(last))
@@ -809,7 +809,7 @@ public final class MainFrame extends JFrame {
         tb.add(toolButton("Save", this::onSave));
         tb.addSeparator();
         var serverLabel = new JLabel(" Server: ");
-        serverLabel.setForeground(Palette.DIM_GRAY);
+        serverLabel.setForeground(Palette.muted());
         tb.add(serverLabel);
         serverCombo.setPreferredSize(new Dimension(260, serverCombo.getPreferredSize().height));
         serverCombo.setMaximumSize(new Dimension(320, 40));
@@ -817,7 +817,7 @@ public final class MainFrame extends JFrame {
         serverCombo.addActionListener(e -> onServerComboChanged());
         tb.add(serverCombo);
         var dbLabel = new JLabel("   Database: ");
-        dbLabel.setForeground(Palette.DIM_GRAY);
+        dbLabel.setForeground(Palette.muted());
         tb.add(dbLabel);
         databaseCombo.setPreferredSize(new Dimension(220, databaseCombo.getPreferredSize().height));
         databaseCombo.setMaximumSize(new Dimension(280, 40));
@@ -826,7 +826,7 @@ public final class MainFrame extends JFrame {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean sel, boolean focus) {
                 super.getListCellRendererComponent(list, value, index, sel, focus);
-                if (value instanceof DbItem d && !d.allowConnections() && !sel) setForeground(Palette.GRAY);
+                if (value instanceof DbItem d && !d.allowConnections() && !sel) setForeground(Palette.subtle());
                 return this;
             }
         });
@@ -846,12 +846,12 @@ public final class MainFrame extends JFrame {
     private JComponent buildStatusBar() {
         var bar = new JPanel(new BorderLayout());
         bar.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(220, 220, 220)),
+                BorderFactory.createMatteBorder(1, 0, 0, 0, Palette.border()),
                 BorderFactory.createEmptyBorder(3, 8, 3, 8)));
         var left = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         left.setOpaque(false);
         healthDot.setFont(healthDot.getFont().deriveFont(15f));
-        healthDot.setForeground(Palette.LIGHT_GRAY);
+        healthDot.setForeground(Palette.disabled());
         healthDot.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         healthDot.addMouseListener(new MouseAdapter() {
             @Override
@@ -862,11 +862,11 @@ public final class MainFrame extends JFrame {
         left.add(healthDot);
         left.add(connectionStatus);
         var sep = new JLabel("  |  ");
-        sep.setForeground(Palette.LIGHT_GRAY);
+        sep.setForeground(Palette.disabled());
         left.add(sep);
         left.add(serverVersionStatus);
         bar.add(left, BorderLayout.WEST);
-        activeDocStatus.setForeground(Palette.DIM_GRAY);
+        activeDocStatus.setForeground(Palette.muted());
         bar.add(activeDocStatus, BorderLayout.EAST);
         return bar;
     }
@@ -1099,11 +1099,11 @@ public final class MainFrame extends JFrame {
                     var sel = selectedDatabase();
                     if (sel != null) Ui.bg(this, () -> bringOnlineByName(sel.session(), sel.db().name()));
                 });
-                online.setForeground(Palette.FOREST_GREEN);
+                online.setForeground(Palette.success());
                 menu.add(online);
             }
             var delete = menuItem("Delete database…", null, this::onDeleteDatabase);
-            delete.setForeground(Palette.FIREBRICK);
+            delete.setForeground(Palette.danger());
             menu.add(delete);
             if (server != primary) {
                 // In the combined list other servers have no node of their own.
@@ -1179,7 +1179,7 @@ public final class MainFrame extends JFrame {
                 sub.setText("Bring database online (" + offline.size() + " offline)");
                 for (var d : offline) {
                     var item = menuItem(d.name(), null, () -> Ui.bg(this, () -> bringOnlineByName(session, d.name())));
-                    item.setForeground(Palette.FOREST_GREEN);
+                    item.setForeground(Palette.success());
                     sub.add(item);
                 }
                 // The popup was sized before the items arrived.

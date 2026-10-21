@@ -264,7 +264,7 @@ public final class DatabaseCredentialsDialog extends BaseDialog {
 
     private void setStatus(String text, boolean error) {
         status.setText(text);
-        status.setForeground(error ? Palette.FIREBRICK : Palette.DARK_SLATE_GRAY);
+        status.setForeground(error ? Palette.danger() : Palette.muted());
         pack();
     }
 }

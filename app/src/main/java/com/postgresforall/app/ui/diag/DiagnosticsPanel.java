@@ -199,7 +199,7 @@ public final class DiagnosticsPanel extends JPanel {
         var holder = new WidthTrackingPanel(new BorderLayout());
         var steps = new JPanel(new BorderLayout());
         steps.add(stepsPanel, BorderLayout.NORTH);
-        detailLine.setForeground(Palette.GRAY);
+        detailLine.setForeground(Palette.subtle());
         detailLine.setFont(detailLine.getFont().deriveFont(Font.ITALIC));
         detailLine.setBorder(BorderFactory.createEmptyBorder(4, 24, 0, 0));
         steps.add(detailLine, BorderLayout.CENTER);
@@ -218,11 +218,11 @@ public final class DiagnosticsPanel extends JPanel {
         logsArea.setAlignmentX(LEFT_ALIGNMENT);
         logsArea.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
 
-        bootBanner.setBackground(Palette.BOOT_BANNER);
+        bootBanner.setBackground(Palette.bannerSuccess());
         bootBanner.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(Palette.BOOT_BANNER_BORDER),
+                BorderFactory.createLineBorder(Palette.bannerSuccessBorder()),
                 BorderFactory.createEmptyBorder(6, 10, 6, 10)));
-        bootBannerText.setForeground(Palette.BOOT_BANNER_TEXT);
+        bootBannerText.setForeground(Palette.success());
         bootBanner.add(bootBannerText, BorderLayout.CENTER);
         bootBanner.setAlignmentX(LEFT_ALIGNMENT);
         bootBanner.setVisible(false);
@@ -352,10 +352,10 @@ public final class DiagnosticsPanel extends JPanel {
             var name = new JLabel(s.name());
             name.setPreferredSize(new Dimension(220, name.getPreferredSize().height));
             var msg = new JLabel(s.message() == null ? "" : s.message());
-            msg.setForeground(Palette.DIM_GRAY);
+            msg.setForeground(Palette.muted());
             msg.setToolTipText(s.message());
             var elapsed = new JLabel(s.elapsedMs() > 0 ? String.format("%,.0f ms", s.elapsedMs()) : "");
-            elapsed.setForeground(Palette.GRAY);
+            elapsed.setForeground(Palette.subtle());
 
             c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
             stepsPanel.add(glyph, c);
@@ -392,11 +392,11 @@ public final class DiagnosticsPanel extends JPanel {
 
     private static Color colorFor(ProbeStatus s) {
         return switch (s) {
-            case OK -> Palette.FOREST_GREEN;
-            case FAILED -> Palette.FIREBRICK;
-            case SKIPPED -> Palette.GRAY;
-            case RUNNING -> Palette.GOLDENROD;
-            default -> Palette.LIGHT_GRAY;
+            case OK -> Palette.success();
+            case FAILED -> Palette.danger();
+            case SKIPPED -> Palette.subtle();
+            case RUNNING -> Palette.caution();
+            default -> Palette.disabled();
         };
     }
 
@@ -453,7 +453,7 @@ public final class DiagnosticsPanel extends JPanel {
         } else {
             bannerText.setText(text);
             banner.setBackground(background);
-            bannerText.setForeground(Color.BLACK);
+            bannerText.setForeground(javax.swing.UIManager.getColor("Label.foreground"));
             banner.setVisible(true);
         }
         revalidate();
@@ -465,7 +465,7 @@ public final class DiagnosticsPanel extends JPanel {
         if (host.kind() == Kind.UNMANAGED) {
             if (!tcpOk) {
                 setBanner("Nothing answers on this port, and it's a " + host.description() + " — start the "
-                        + "server yourself, then click Refresh.", Palette.BANNER_YELLOW);
+                        + "server yourself, then click Refresh.", Palette.bannerInfo());
             }
             return;
         }
@@ -473,7 +473,7 @@ public final class DiagnosticsPanel extends JPanel {
 
         if (host instanceof DockerHost && !snap.dockerAvailable()) {
             setBanner("This server is a Docker container and Docker isn't running. Start Docker, then click Refresh.",
-                    Palette.BANNER_RED);
+                    Palette.bannerError());
             return;
         }
         var state = snap.hostStatus() == null ? null : snap.hostStatus().state();
@@ -481,14 +481,14 @@ public final class DiagnosticsPanel extends JPanel {
             setBanner(host instanceof DockerHost
                     ? "Container '" + host.name() + "' doesn't exist. Create it (e.g. 'docker compose up -d'), "
                     + "or point Host/Port at a native PostgreSQL install."
-                    : host.description() + " isn't installed any more.", Palette.BANNER_ORANGE);
+                    : host.description() + " isn't installed any more.", Palette.bannerWarning());
             return;
         }
         if (state == RunState.STOPPED) {
             setBanner(host.description() + " is stopped. Use Start below"
                     + (host.needsElevation()
                     ? (Platform.isWindows() ? " (Windows will ask for admin)." : " (macOS will ask for an administrator password).")
-                    : "."), Palette.BANNER_ORANGE);
+                    : "."), Palette.bannerWarning());
         }
     }
 
@@ -709,7 +709,7 @@ public final class DiagnosticsPanel extends JPanel {
                 issuesBox.add(Box.createVerticalStrut(4));
             }
             issuesBox.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(new Color(224, 224, 224)),
+                    BorderFactory.createLineBorder(Palette.border()),
                     BorderFactory.createEmptyBorder(6, 6, 6, 6)));
             issuesBox.setVisible(true);
         }
@@ -722,12 +722,12 @@ public final class DiagnosticsPanel extends JPanel {
         Color bar;
         String sev;
         switch (issue.severity()) {
-            case CRITICAL -> { bar = Palette.MEDIUM_PURPLE; sev = "CRITICAL"; }
-            case ERROR -> { bar = Palette.FIREBRICK; sev = "ERROR"; }
-            case WARNING -> { bar = Palette.GOLDENROD; sev = "WARN"; }
-            case UNKNOWN -> { bar = Palette.DARK_ORANGE; sev = "UNKNOWN"; }
-            case INFO -> { bar = Palette.SEA_GREEN; sev = "INFO"; }
-            default -> { bar = Palette.GRAY; sev = ""; }
+            case CRITICAL -> { bar = Palette.critical(); sev = "CRITICAL"; }
+            case ERROR -> { bar = Palette.danger(); sev = "ERROR"; }
+            case WARNING -> { bar = Palette.caution(); sev = "WARN"; }
+            case UNKNOWN -> { bar = Palette.warning(); sev = "UNKNOWN"; }
+            case INFO -> { bar = Palette.success(); sev = "INFO"; }
+            default -> { bar = Palette.subtle(); sev = ""; }
         }
         var card = new JPanel(new BorderLayout(10, 0));
         card.setBorder(BorderFactory.createCompoundBorder(
@@ -743,14 +743,14 @@ public final class DiagnosticsPanel extends JPanel {
         head.setAlignmentX(LEFT_ALIGNMENT);
         text.add(head);
         var desc = text(issue.description());
-        desc.setForeground(Palette.DIM_GRAY);
+        desc.setForeground(Palette.muted());
         desc.setColumns(50);
         desc.setAlignmentX(LEFT_ALIGNMENT);
         text.add(desc);
         var sampleText = issue.matchedLines().isEmpty() ? "" : issue.matchedLines().get(issue.matchedLines().size() - 1);
         var sample = new JLabel(sampleText);
         sample.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 10));
-        sample.setForeground(Palette.GRAY);
+        sample.setForeground(Palette.subtle());
         sample.setToolTipText("<html><pre>" + Ui.escapeHtml(String.join("\n", issue.matchedLines())) + "</pre></html>");
         sample.setAlignmentX(LEFT_ALIGNMENT);
         text.add(sample);
