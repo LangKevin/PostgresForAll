@@ -35,8 +35,11 @@ import java.util.function.Predicate;
  * ./gradlew :app:installDist
  * java -cp "app/build/install/PostgresForAll/lib/*" tools/demo/Demo.java demo/PostgresForAll-demo.mp4
  * </pre>
- * Logs in with the config's "Application user" preset against the ScheduleMe
- * database; reads only (the backup goes to a temp file).
+ * Logs in with the config's "Application user" preset (point POSTGRESCONNECT_CONFIG
+ * at a config for the database to show). Expects the clinical-audit schema
+ * (audit_category, audit_finding, facility, resident, audit_run) and a
+ * clinical_audit_prod database on the same server. Reads only; the backup goes
+ * to a temp file.
  */
 public class Demo {
     // ---- video geometry -------------------------------------------------------
@@ -166,14 +169,14 @@ public class Demo {
         expand(tree, n -> n.name.startsWith("Tables ("));
         hold(2500);
         say("Columns show their types, NOT NULL and primary keys");
-        expand(tree, n -> n.kind == ExplorerNode.Kind.TABLE && n.name.equals("users"));
-        expand(tree, n -> n.name.startsWith("Columns (") && ((ExplorerNode) n.getParent()).name.equals("users"));
+        expand(tree, n -> n.kind == ExplorerNode.Kind.TABLE && n.name.equals("audit_finding"));
+        expand(tree, n -> n.name.startsWith("Columns (") && ((ExplorerNode) n.getParent()).name.equals("audit_finding"));
         hold(4000);
         say("Filter the tree as you type");
         var filter = find(main, JTextField.class, f -> "Filter loaded objects".equals(f.getClientProperty("JTextField.placeholderText")));
         moveTo(filter);
         click(() -> { });
-        typeField(filter, "task");
+        typeField(filter, "facility");
         hold(4000);
         edt(() -> filter.setText(""));
         edt(() -> collapseTo(tree, n -> n.name.startsWith("Columns (")));
@@ -185,14 +188,15 @@ public class Demo {
         moveTo(tab.editor(), 300, 60);
         edt(() -> tab.setSqlText(""));
         typeEditor(tab, """
-                -- How busy is each user?
-                SELECT u.email,
-                       count(e.id)       AS events,
-                       min(e.start_time) AS first_event
-                FROM users u
-                LEFT JOIN events e ON e.user_id = u.id
-                GROUP BY u.email
-                ORDER BY events DESC
+                -- Audit findings by category
+                SELECT c.roman_numeral AS section,
+                       c.title,
+                       count(f.id)                          AS findings,
+                       count(*) FILTER (WHERE f.is_urgent)  AS urgent
+                FROM audit_category c
+                LEFT JOIN audit_finding f ON f.category_id = c.id
+                GROUP BY c.roman_numeral, c.title, c.display_order
+                ORDER BY findings DESC
                 LIMIT 25;
                 """);
         hold(1500);
@@ -230,9 +234,9 @@ public class Demo {
         moveTo(tab.editor(), 300, 60);
         edt(() -> tab.setSqlText(""));
         typeEditor(tab, """
-                SELECT count(*) AS users FROM users;
+                SELECT count(*) AS residents FROM resident;
                 DO $$ BEGIN
-                  RAISE NOTICE 'There are % users', (SELECT count(*) FROM users);
+                  RAISE NOTICE 'There are % audit runs on file', (SELECT count(*) FROM audit_run);
                   RAISE WARNING 'Just a friendly warning';
                 END $$;
                 SELECT * FROM table_that_does_not_exist;
@@ -249,7 +253,7 @@ public class Demo {
         // ---- 6. Script a table -------------------------------------------------------------------------
         chapter("6 / 10  ·  Script a table");
         say("Double-click a table to script SELECT … LIMIT 1000 into a new tab and run it");
-        var users = node(tree, n -> n.kind == ExplorerNode.Kind.TABLE && n.name.equals("users"));
+        var users = node(tree, n -> n.kind == ExplorerNode.Kind.TABLE && n.name.equals("facility"));
         moveTo(tree, nodeCenter(tree, users));
         click(() -> doubleClickNode(tree, users));
         var scripted = waitFor(() -> findOrNull(main, QueryTab.class, t -> t != tab && t.isShowing()), 20000);
@@ -271,13 +275,13 @@ public class Demo {
         edt(() -> MenuSelectionManager.defaultManager().setSelectedPath(new MenuElement[]{popup, serverMenu, serverMenu.getPopupMenu()}));
         hold(1500);
         var pgItem = Ui.call(() -> {
-            for (var c : serverMenu.getMenuComponents()) if (c instanceof JMenuItem mi && "postgres".equals(mi.getText())) return mi;
+            for (var c : serverMenu.getMenuComponents()) if (c instanceof JMenuItem mi && "clinical_audit_prod".equals(mi.getText())) return mi;
             return null;
         });
         moveTo(pgItem);
         click(pgItem::doClick);
         closeMenus();
-        waitFor(() -> "postgres".equals(scripted.currentDatabase()) ? true : null, 20000);
+        waitFor(() -> "clinical_audit_prod".equals(scripted.currentDatabase()) ? true : null, 20000);
         hold(1500);
         edt(() -> scripted.setSqlText("SELECT datname, pg_size_pretty(pg_database_size(datname)) AS size\nFROM pg_database\nWHERE NOT datistemplate\nORDER BY 1;"));
         moveTo(run);
@@ -305,7 +309,7 @@ public class Demo {
         var chooserDialog = waitWindow(w -> w instanceof JDialog d && d.isShowing() && findOrNull(d, JFileChooser.class, x -> true) != null, 15000);
         hold(2500);
         var chooser = find(chooserDialog, JFileChooser.class, x -> true);
-        var target = new File(System.getProperty("java.io.tmpdir"), "scheduleme-demo-backup.dump");
+        var target = new File(System.getProperty("java.io.tmpdir"), "clinical-audit-demo-backup.dump");
         target.delete();
         edt(() -> chooser.setSelectedFile(target));
         hold(1200);
