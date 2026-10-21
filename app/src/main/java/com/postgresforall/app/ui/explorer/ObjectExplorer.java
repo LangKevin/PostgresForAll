@@ -94,7 +94,25 @@ public final class ObjectExplorer implements AutoCloseable {
     private final ExecutorService events = Executors.newSingleThreadExecutor(Thread.ofVirtual().factory());
     private final ExplorerNode root = new ExplorerNode(Kind.ROOT, "Servers", null, null, null, null);
     private final DefaultTreeModel model = new DefaultTreeModel(root);
-    private final JTree tree = new JTree(model);
+    private final ExplorerRenderer renderer = new ExplorerRenderer();
+    private int hoverRow = -1;
+    private String filter = "";
+    /** Draws a full-width hover band behind the row under the mouse. */
+    private final JTree tree = new JTree(model) {
+        @Override
+        protected void paintComponent(java.awt.Graphics g) {
+            g.setColor(getBackground());
+            g.fillRect(0, 0, getWidth(), getHeight());
+            if (hoverRow >= 0 && !isRowSelected(hoverRow)) {
+                var r = getRowBounds(hoverRow);
+                if (r != null) {
+                    g.setColor(Palette.hoverRow());
+                    g.fillRect(0, r.y, getWidth(), r.height);
+                }
+            }
+            super.paintComponent(g);
+        }
+    };
     private final Consumer<ServerSession> stateListener = s -> events.submit(() -> onSessionStateChanged(s));
     private final Consumer<ServerSession> infoListener = s -> events.submit(() -> onSessionInfoChanged(s));
     private final Consumer<ServerSession> addedListener = s -> events.submit(() -> onSessionAdded(s));
@@ -111,8 +129,22 @@ public final class ObjectExplorer implements AutoCloseable {
         tree.setRootVisible(false);
         tree.setShowsRootHandles(true);
         tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
-        tree.setCellRenderer(new ExplorerRenderer());
-        tree.setRowHeight(0);
+        tree.setCellRenderer(renderer);
+        tree.setOpaque(false);
+        tree.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+            @Override
+            public void mouseMoved(java.awt.event.MouseEvent e) {
+                var row = tree.getClosestRowForLocation(e.getX(), e.getY());
+                var r = row >= 0 ? tree.getRowBounds(row) : null;
+                setHover(r != null && e.getY() >= r.y && e.getY() < r.y + r.height ? row : -1);
+            }
+        });
+        tree.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                setHover(-1);
+            }
+        });
         tree.setToggleClickCount(0); // double-click is an action, not a toggle
         ToolTipManager.sharedInstance().registerComponent(tree);
         tree.addTreeWillExpandListener(new TreeWillExpandListener() {
@@ -133,6 +165,72 @@ public final class ObjectExplorer implements AutoCloseable {
 
     public JTree tree() {
         return tree;
+    }
+
+    private void setHover(int row) {
+        if (row == hoverRow) return;
+        hoverRow = row;
+        tree.repaint();
+    }
+
+    // ---- Filter (search box) ---------------------------------------------
+
+    /**
+     * Highlights loaded nodes whose name contains {@code text} (others dim),
+     * expands down to each match and selects the first. Empty clears it.
+     * Unloaded branches aren't searched — expand them first. Call on the EDT.
+     */
+    public void setFilter(String text) {
+        filter = text == null ? "" : text.trim().toLowerCase(java.util.Locale.ROOT);
+        renderer.setFilter(filter);
+        // Matches render bold, so cached row widths are stale: re-measure loaded nodes.
+        var all = root.preorderEnumeration();
+        while (all.hasMoreElements()) {
+            if (all.nextElement() instanceof ExplorerNode n && n != root) model.nodeChanged(n);
+        }
+        if (!filter.isEmpty()) {
+            var hits = matches();
+            for (var n : hits.subList(0, Math.min(200, hits.size()))) {
+                var parent = (ExplorerNode) n.getParent();
+                if (parent != null) tree.expandPath(pathOf(parent));
+            }
+            if (!hits.isEmpty()) select(hits.get(0));
+        }
+        tree.repaint();
+    }
+
+    /** Selects the next match after the current selection, wrapping. Returns false when nothing matches. */
+    public boolean nextMatch() {
+        var hits = matches();
+        if (hits.isEmpty()) return false;
+        var current = selectedNode();
+        var i = current == null ? -1 : hits.indexOf(current);
+        select(hits.get((i + 1) % hits.size()));
+        return true;
+    }
+
+    private java.util.List<ExplorerNode> matches() {
+        var hits = new ArrayList<ExplorerNode>();
+        if (filter.isEmpty()) return hits;
+        var e = root.preorderEnumeration();
+        while (e.hasMoreElements()) {
+            if (e.nextElement() instanceof ExplorerNode n && n != root && ExplorerRenderer.matches(n, filter)) hits.add(n);
+        }
+        return hits;
+    }
+
+    private void select(ExplorerNode n) {
+        var path = pathOf(n);
+        tree.setSelectionPath(path);
+        tree.scrollPathToVisible(path);
+    }
+
+    /** Collapses everything below the top-level servers. Call on the EDT. */
+    public void collapseAll() {
+        for (var row = tree.getRowCount() - 1; row >= 0; row--) {
+            var p = tree.getPathForRow(row);
+            if (p != null && p.getPathCount() > 2) tree.collapseRow(row);
+        }
     }
 
     public ExplorerNode selectedNode() {
@@ -516,7 +614,7 @@ public final class ObjectExplorer implements AutoCloseable {
         var cols = ctx.inspector().getColumns(tb.schema(), tb.name());
         var folder = ExplorerNode.folder(Kind.COLUMNS_FOLDER, "Columns (" + cols.size() + ")", dbName, session);
         for (var c : cols) {
-            var pk = c.isPrimaryKey() ? " 🔑" : "";
+            var pk = "";
             var nn = c.isNullable() ? "" : " NOT NULL";
             var n = new ExplorerNode(Kind.COLUMN, c.name() + pk, c.dataType() + nn, c, dbName, session);
             n.loaded = true;

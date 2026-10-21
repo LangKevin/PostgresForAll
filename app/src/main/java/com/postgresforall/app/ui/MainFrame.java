@@ -11,6 +11,8 @@ import com.postgresforall.app.ui.dialogs.TextInputDialog;
 import com.postgresforall.app.ui.explorer.ExplorerNode;
 import com.postgresforall.app.ui.explorer.ObjectExplorer;
 import com.postgresforall.app.ui.query.QueryTab;
+import com.postgresforall.app.ui.theme.Icons;
+import com.postgresforall.app.ui.theme.Theme;
 import com.postgresforall.core.config.AppConfig;
 import com.postgresforall.core.model.ConnectionProfile;
 import com.postgresforall.core.model.DiscoveredServer;
@@ -51,6 +53,7 @@ import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTabbedPane;
+import javax.swing.JTextField;
 import javax.swing.JToolBar;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
@@ -104,16 +107,16 @@ public final class MainFrame extends JFrame {
 
     private final JTabbedPane docTabs = new JTabbedPane();
     private final JPanel explorerHost = new JPanel(new BorderLayout());
-    private final JComboBox<ServerItem> serverCombo = new JComboBox<>();
-    private final JComboBox<DbItem> databaseCombo = new JComboBox<>();
+    private final JButton connectionPill = new JButton();
+    private final JTextField explorerFilter = new JTextField();
+    private final JLabel caretStatus = new JLabel();
     private final JLabel healthDot = new JLabel("●");
     private final JLabel connectionStatus = new JLabel();
     private final JLabel serverVersionStatus = new JLabel();
     private final JLabel activeDocStatus = new JLabel();
     private final JSplitPane outerSplit;
-    private final JCheckBoxMenuItem showOutputItem = new JCheckBoxMenuItem("DB Operations Output", true);
-    private boolean updatingCombo;
-    private volatile String dbComboServerKey;
+    private final JCheckBoxMenuItem showOutputItem = new JCheckBoxMenuItem("Output Panel", true);
+    private int expandedOutputDivider = -1;
     private volatile LocalDateTime lastHealthOk;
     private int untitledCounter;
     private boolean closing;
@@ -137,19 +140,27 @@ public final class MainFrame extends JFrame {
 
         var top = new JPanel(new BorderLayout());
         top.add(buildToolBar(), BorderLayout.CENTER);
+        top.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Palette.border()));
+        if (Platform.isMac()) {
+            // One toolbar row beside the traffic lights, like Xcode / TablePlus.
+            getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+            getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+            getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        }
 
         docTabs.putClientProperty(FlatClientProperties.TABBED_PANE_TAB_CLOSABLE, true);
         docTabs.putClientProperty(FlatClientProperties.TABBED_PANE_TAB_CLOSE_CALLBACK,
                 (java.util.function.IntConsumer) this::closeTabAt);
-        docTabs.putClientProperty(FlatClientProperties.TABBED_PANE_TAB_TYPE, FlatClientProperties.TABBED_PANE_TAB_TYPE_CARD);
+        docTabs.putClientProperty(FlatClientProperties.TABBED_PANE_TAB_TYPE, FlatClientProperties.TABBED_PANE_TAB_TYPE_UNDERLINED);
+        docTabs.putClientProperty(FlatClientProperties.TABBED_PANE_SCROLL_BUTTONS_PLACEMENT, FlatClientProperties.TABBED_PANE_PLACEMENT_TRAILING);
         docTabs.addChangeListener(e -> syncToActiveTab());
 
         var explorerPanel = new JPanel(new BorderLayout());
-        var explorerTitle = new JLabel("  Object Explorer");
-        explorerTitle.setFont(explorerTitle.getFont().deriveFont(Font.BOLD));
-        explorerTitle.setBorder(BorderFactory.createEmptyBorder(4, 2, 4, 2));
-        explorerPanel.add(explorerTitle, BorderLayout.NORTH);
-        explorerHost.add(new JLabel("  Connecting…"), BorderLayout.NORTH);
+        explorerPanel.add(buildExplorerHeader(), BorderLayout.NORTH);
+        var connecting = new JLabel("Connecting…", Icons.get("loader"), JLabel.LEFT);
+        connecting.putClientProperty(FlatClientProperties.STYLE_CLASS, "muted");
+        connecting.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+        explorerHost.add(connecting, BorderLayout.NORTH);
         explorerPanel.add(explorerHost, BorderLayout.CENTER);
 
         var innerSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, explorerPanel, docTabs);
@@ -158,6 +169,11 @@ public final class MainFrame extends JFrame {
         outerSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, innerSplit, output);
         outerSplit.setResizeWeight(1.0);
         outerSplit.setContinuousLayout(true);
+        output.onToggleCollapse(() -> setOutputCollapsed(!output.isCollapsed()));
+        // A long operation that finishes while the output is out of sight gets a toast.
+        output.onFinished((title, ok) -> {
+            if (!output.isShowing() || output.isCollapsed()) Toast.show(this, ok ? "Finished" : "Failed", title, ok);
+        });
 
         var content = new JPanel(new BorderLayout());
         content.add(top, BorderLayout.NORTH);
@@ -170,7 +186,9 @@ public final class MainFrame extends JFrame {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowOpened(WindowEvent e) {
-                outerSplit.setDividerLocation(Math.max(200, outerSplit.getHeight() - 180));
+                outerSplit.setDividerLocation(Math.max(200, outerSplit.getHeight() - 200));
+                // Output starts folded to its header; it opens itself when an operation runs.
+                Ui.later(() -> setOutputCollapsed(true));
                 Ui.bg(MainFrame.this, MainFrame.this::onOpened);
             }
 
@@ -204,17 +222,19 @@ public final class MainFrame extends JFrame {
                         AppConfig.current().combineServerDatabases);
                 wireExplorerTree(explorer);
                 explorerHost.removeAll();
-                explorerHost.add(new JScrollPane(explorer.tree()), BorderLayout.CENTER);
+                var treeScroll = new JScrollPane(explorer.tree());
+                treeScroll.setBorder(BorderFactory.createEmptyBorder());
+                explorerHost.add(treeScroll, BorderLayout.CENTER);
                 explorerHost.revalidate();
             });
 
             for (var s : registry.sessions()) watchSession(s);
             registry.onSessionAdded(s -> {
                 watchSession(s);
-                Ui.later(this::refreshServerCombo);
+                Ui.later(this::syncToActiveTab);
             });
 
-            Ui.edt(this::refreshServerCombo);
+            Ui.edt(this::syncToActiveTab);
             newQueryDocument(null, null, primary, null);
             probeHealth();
             Ui.edt(healthTimer::start);
@@ -228,7 +248,7 @@ public final class MainFrame extends JFrame {
 
     private void watchSession(ServerSession s) {
         s.onStateChanged(this::onSessionStateChanged);
-        s.onInfoChanged(x -> Ui.later(this::refreshServerCombo));
+        s.onInfoChanged(x -> Ui.later(this::syncToActiveTab));
     }
 
     /** Asks about unsaved tabs; true when the app is closing. */
@@ -295,11 +315,7 @@ public final class MainFrame extends JFrame {
 
     private void onSessionStateChanged(ServerSession s) {
         Ui.later(() -> {
-            refreshServerCombo();
-            if (s == activeSession()) {
-                dbComboServerKey = null; // force the database list to reload
-                syncToActiveTab();
-            }
+            syncToActiveTab();
         });
     }
 
@@ -490,6 +506,7 @@ public final class MainFrame extends JFrame {
             if (initialSql != null) t.setInitialSql(initialSql);
             if (filePath == null) t.setTitle("SQLQuery" + (++untitledCounter) + ".sql");
             t.onChange(change -> Ui.later(() -> onTabChanged(t, change)));
+            t.editor().addCaretListener(e -> { if (t == activeTab()) updateCaretStatus(); });
             tabs.add(t);
             docTabs.addTab(composeTabTitle(t), t);
             docTabs.setSelectedComponent(t);
@@ -581,154 +598,131 @@ public final class MainFrame extends JFrame {
         return true;
     }
 
-    // ---- Server / Database dropdowns --------------------------------------
+    // ---- Connection pill (server › database) --------------------------------
 
-    private record ServerItem(ServerSession session) {
-        @Override
-        public String toString() {
-            return session.server().displayName();
-        }
-    }
-
-    private record DbItem(String name, boolean allowConnections) {
-        @Override
-        public String toString() {
-            return allowConnections ? name : name + "  (offline)";
-        }
-    }
-
-    /** The active tab changed (or its connection did): refresh both dropdowns and the status bar. EDT. */
+    /** The active tab changed (or its connection did): refresh the pill and the status bar. EDT. */
     private void syncToActiveTab() {
         updateConnectionStatus();
-        syncServerCombo();
+        updatePill();
+        updateCaretStatus();
         var tab = activeTab();
         if (tab != null) activeDocStatus.setText(tab.statusText());
-        if (!activeSession().key().equalsIgnoreCase(String.valueOf(dbComboServerKey))) refreshDatabaseCombo();
-        else syncDbCombo();
     }
 
-    private void refreshServerCombo() {
-        updatingCombo = true;
-        try {
-            var model = new DefaultComboBoxModel<ServerItem>();
-            for (var s : registry.sessions()) if (s.state() == State.CONNECTED) model.addElement(new ServerItem(s));
-            serverCombo.setModel(model);
-        } finally {
-            updatingCombo = false;
-        }
-        syncServerCombo();
-    }
-
-    private void syncServerCombo() {
-        updatingCombo = true;
-        try {
-            var active = activeSession();
-            serverCombo.setSelectedItem(null);
-            for (var i = 0; i < serverCombo.getItemCount(); i++) {
-                if (serverCombo.getItemAt(i).session() == active) serverCombo.setSelectedIndex(i);
-            }
-        } finally {
-            updatingCombo = false;
-        }
-    }
-
-    /** SSMS "Change Connection": move the active tab to another connected server. */
-    private void onServerComboChanged() {
-        if (updatingCombo || !(serverCombo.getSelectedItem() instanceof ServerItem picked)) return;
+    private void updatePill() {
         var tab = activeTab();
-        if (tab == null || picked.session() == tab.session()) return;
-        Ui.bg(this, () -> {
-            var login = picked.session().login();
-            if (login == null || !tab.setServer(picked.session(), login.database)) {
-                Ui.error(this, "Change connection", "Couldn't switch this tab to "
-                        + picked.session().server().address() + ".\n" + tab.statusText());
-            }
-            Ui.edt(this::syncToActiveTab);
-        });
+        var session = activeSession();
+        var connected = session.state() == State.CONNECTED;
+        var db = tab != null ? tab.currentDatabase() : session.login() != null ? session.login().database : "—";
+        connectionPill.setText(session.server().address() + "  ›  " + db);
+        connectionPill.setIcon(new DotIcon(connected ? Palette::success : Palette::disabled));
+        connectionPill.setToolTipText("<html><b>" + Ui.escapeHtml(session.server().displayName()) + "</b><br>Database: "
+                + Ui.escapeHtml(db) + "<br>Click to switch this tab to another server or database</html>");
     }
 
-    private void refreshDatabaseCombo() {
-        var session = activeSession();
-        dbComboServerKey = session.key();
+    /** Server › database menu for the active tab: every connected server and its databases. */
+    private void showConnectionMenu() {
         var ex = explorer;
-        var inspector = ex == null ? null : ex.inspectorFor(session);
-        if (inspector == null) {
-            updatingCombo = true;
-            try {
-                databaseCombo.setModel(new DefaultComboBoxModel<>());
-            } finally {
-                updatingCombo = false;
-            }
-            return;
-        }
+        if (ex == null) return;
+        var tab = activeTab();
+        connectionPill.setEnabled(false);
         Ui.bgQuiet(() -> {
-            var dbs = inspector.getDatabases();
-            var items = dbs.stream().map(d -> new DbItem(d.name(), d.allowConnections()))
-                    .sorted(Comparator.comparing((DbItem i) -> i.allowConnections() ? 0 : 1)
-                            .thenComparing(DbItem::name, String.CASE_INSENSITIVE_ORDER))
-                    .toList();
-            Ui.edt(() -> {
-                if (session != activeSession()) return; // tab switched meanwhile
-                updatingCombo = true;
+            var servers = new java.util.LinkedHashMap<ServerSession, List<DatabaseInfo>>();
+            for (var s : registry.sessions()) {
+                if (s.state() != State.CONNECTED) continue;
+                var inspector = ex.inspectorFor(s);
+                List<DatabaseInfo> dbs;
                 try {
-                    var model = new DefaultComboBoxModel<DbItem>();
-                    items.forEach(model::addElement);
-                    databaseCombo.setModel(model);
-                } finally {
-                    updatingCombo = false;
+                    dbs = inspector == null ? List.of() : inspector.getDatabases();
+                } catch (Exception e) {
+                    dbs = List.of();
                 }
-                syncDbCombo();
+                servers.put(s, dbs.stream().sorted(Comparator.comparing((DatabaseInfo d) -> d.allowConnections() ? 0 : 1)
+                        .thenComparing(DatabaseInfo::name, String.CASE_INSENSITIVE_ORDER)).toList());
+            }
+            Ui.edt(() -> {
+                connectionPill.setEnabled(true);
+                var menu = new JPopupMenu();
+                for (var entry : servers.entrySet()) {
+                    var s = entry.getKey();
+                    var sub = new JMenu(s.server().displayName());
+                    sub.setIcon(Icons.tinted("server", Icons.SMALL, Palette::success));
+                    if (tab != null && s == tab.session()) sub.setFont(sub.getFont().deriveFont(Font.BOLD));
+                    for (var d : entry.getValue()) {
+                        var current = tab != null && s == tab.session() && d.name().equals(tab.currentDatabase());
+                        var item = new JMenuItem(d.allowConnections() ? d.name() : d.name() + "  (offline)",
+                                current ? Icons.tinted("circle-check", Icons.SMALL, Palette::accent)
+                                        : d.allowConnections() ? Icons.get("database", Icons.SMALL)
+                                        : Icons.tinted("lock", Icons.SMALL, Palette::disabled));
+                        if (current) item.setFont(item.getFont().deriveFont(Font.BOLD));
+                        item.addActionListener(e -> switchActiveTab(s, d.name(), d.allowConnections()));
+                        sub.add(item);
+                    }
+                    if (entry.getValue().isEmpty()) {
+                        var none = new JMenuItem("(couldn't list databases)");
+                        none.setEnabled(false);
+                        sub.add(none);
+                    }
+                    menu.add(sub);
+                }
+                if (servers.isEmpty()) {
+                    var none = new JMenuItem("No connected servers");
+                    none.setEnabled(false);
+                    menu.add(none);
+                }
+                menu.addSeparator();
+                menu.add(menuItem("Connect to Server…", null, this::onConnectServer)).setIcon(Icons.get("plug", Icons.SMALL));
+                menu.show(connectionPill, 0, connectionPill.getHeight());
             });
         });
     }
 
-    private void syncDbCombo() {
+    /**
+     * SSMS "Change Connection": points the active tab at {@code dbName} on
+     * {@code target}, bringing an offline database online first (after asking) and
+     * offering alternate credentials when the login role is refused.
+     */
+    private void switchActiveTab(ServerSession target, String dbName, boolean allowConnections) {
         var tab = activeTab();
-        if (tab == null) return;
-        updatingCombo = true;
-        try {
-            databaseCombo.setSelectedItem(null);
-            for (var i = 0; i < databaseCombo.getItemCount(); i++) {
-                if (databaseCombo.getItemAt(i).name().equals(tab.currentDatabase())) databaseCombo.setSelectedIndex(i);
-            }
-        } finally {
-            updatingCombo = false;
-        }
-    }
-
-    private void onDatabaseComboChanged() {
-        if (updatingCombo || !(databaseCombo.getSelectedItem() instanceof DbItem picked)) return;
-        var tab = activeTab();
-        if (tab == null || picked.name().equals(tab.currentDatabase())) return;
-        var session = tab.session();
-
+        if (tab == null || (target == tab.session() && dbName.equals(tab.currentDatabase()))) return;
         Ui.bg(this, () -> {
-            if (!picked.allowConnections()) {
-                if (!Ui.yesNo(this, "Database offline", "Database '" + picked.name()
+            if (!allowConnections) {
+                if (!Ui.yesNo(this, "Database offline", "Database '" + dbName
                         + "' is currently offline (ALLOW_CONNECTIONS = false).\n\nBring it online and switch to it?", false)) {
-                    Ui.edt(this::syncDbCombo); // revert selection
                     return;
                 }
                 try {
-                    DatabaseOperations.bringOnlineUsingProfile(session.login(), picked.name());
+                    DatabaseOperations.bringOnlineUsingProfile(target.login(), dbName);
                 } catch (Exception ex) {
-                    Ui.error(this, "Bring online failed", "Couldn't bring '" + picked.name() + "' online: "
+                    Ui.error(this, "Bring online failed", "Couldn't bring '" + dbName + "' online: "
                             + ConnectionErrors.message(ex));
-                    Ui.edt(this::syncDbCombo);
                     return;
                 }
-                refreshTree(session);
+                refreshTree(target);
             }
-
-            var ok = tab.setDatabase(picked.name());
+            var ok = tab.setServer(target, dbName);
             // Likely a permission / auth failure (a database owned by another role):
             // offer alternate credentials and retry once.
-            if (!ok && promptForDatabaseCredentials(session, picked.name())) ok = tab.setDatabase(picked.name());
-            if (!ok) {
-                Ui.error(this, "Switch failed", "Couldn't switch to '" + picked.name() + "'.");
-                Ui.edt(this::syncDbCombo);
-            }
+            if (!ok && promptForDatabaseCredentials(target, dbName)) ok = tab.setServer(target, dbName);
+            if (!ok) Ui.error(this, "Switch failed", "Couldn't switch to '" + dbName + "' on "
+                    + target.server().address() + ".\n" + tab.statusText());
+            Ui.edt(this::syncToActiveTab);
         });
+    }
+
+    /** A small filled circle in a theme colour (pill status dot). */
+    private record DotIcon(java.util.function.Supplier<Color> color) implements javax.swing.Icon {
+        @Override
+        public void paintIcon(Component c, java.awt.Graphics g, int x, int y) {
+            var g2 = (java.awt.Graphics2D) g.create();
+            g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(color.get());
+            g2.fillOval(x + 1, y + 1, 8, 8);
+            g2.dispose();
+        }
+
+        @Override public int getIconWidth() { return 10; }
+        @Override public int getIconHeight() { return 10; }
     }
 
     // ---- Menu / toolbar ----------------------------------------------------
@@ -761,8 +755,26 @@ public final class MainFrame extends JFrame {
 
         var view = new JMenu("View");
         view.add(menuItem("Refresh Object Explorer (and find servers)", KeyStroke.getKeyStroke(KeyEvent.VK_F5, InputEvent.SHIFT_DOWN_MASK), this::onRefreshTree));
-        showOutputItem.addActionListener(e -> setOutputVisible(showOutputItem.isSelected()));
+        showOutputItem.addActionListener(e -> setOutputCollapsed(!showOutputItem.isSelected()));
         view.add(showOutputItem);
+        view.addSeparator();
+        var appearance = new JMenu("Appearance");
+        var group = new javax.swing.ButtonGroup();
+        for (var m : Theme.Mode.values()) {
+            var item = new javax.swing.JRadioButtonMenuItem(m.label, Icons.get(switch (m) {
+                case SYSTEM -> "monitor";
+                case LIGHT -> "sun";
+                case DARK -> "moon";
+            }, Icons.SMALL), Theme.mode() == m);
+            item.addActionListener(e -> {
+                Theme.setMode(m);
+                settings.appearance = m.name().toLowerCase(java.util.Locale.ROOT);
+                settings.save();
+            });
+            group.add(item);
+            appearance.add(item);
+        }
+        view.add(appearance);
         bar.add(view);
 
         var window = new JMenu("Window");
@@ -800,44 +812,98 @@ public final class MainFrame extends JFrame {
     private JToolBar buildToolBar() {
         var tb = new JToolBar();
         tb.setFloatable(false);
-        tb.add(toolButton("New Query", this::onNewQuery));
+        tb.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        if (Platform.isMac()) {
+            // Keeps the toolbar clear of the traffic-light buttons (and adapts in full screen).
+            var placeholder = new JPanel();
+            placeholder.putClientProperty(FlatClientProperties.FULL_WINDOW_CONTENT_BUTTONS_PLACEHOLDER, "mac");
+            tb.add(placeholder);
+        }
+        var mod = Ui.menuKeyText();
+        tb.add(iconButton("file-plus", "New query (" + mod + "N)", this::onNewQuery));
+        tb.add(iconButton("folder-open", "Open script… (" + mod + "O)", this::onOpenScript));
+        tb.add(iconButton("save", "Save (" + mod + "S)", this::onSave));
         tb.addSeparator();
-        ((JButton) tb.add(toolButton("▶ Execute", this::onExecute))).setToolTipText("F5 / " + Ui.menuKeyText() + "Enter");
-        ((JButton) tb.add(toolButton("■ Stop", this::onCancel))).setToolTipText(Platform.isMac() ? "⌘." : "Alt+Break");
-        tb.addSeparator();
-        tb.add(toolButton("Open", this::onOpenScript));
-        tb.add(toolButton("Save", this::onSave));
-        tb.addSeparator();
-        var serverLabel = new JLabel(" Server: ");
-        serverLabel.setForeground(Palette.muted());
-        tb.add(serverLabel);
-        serverCombo.setPreferredSize(new Dimension(260, serverCombo.getPreferredSize().height));
-        serverCombo.setMaximumSize(new Dimension(320, 40));
-        serverCombo.setToolTipText("Change Connection: move the active query tab to another connected server.");
-        serverCombo.addActionListener(e -> onServerComboChanged());
-        tb.add(serverCombo);
-        var dbLabel = new JLabel("   Database: ");
-        dbLabel.setForeground(Palette.muted());
-        tb.add(dbLabel);
-        databaseCombo.setPreferredSize(new Dimension(220, databaseCombo.getPreferredSize().height));
-        databaseCombo.setMaximumSize(new Dimension(280, 40));
-        databaseCombo.setToolTipText("Switch the active query tab to a different database.");
-        databaseCombo.setRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean sel, boolean focus) {
-                super.getListCellRendererComponent(list, value, index, sel, focus);
-                if (value instanceof DbItem d && !d.allowConnections() && !sel) setForeground(Palette.subtle());
-                return this;
-            }
+
+        // Split "Run ▾" button: Run (selection or all), plus options.
+        var run = new JButton("Run", Icons.tinted("play", Icons.NORMAL, Palette::success));
+        run.setToolTipText("Run the selection, or the whole script (F5 / " + mod + "Enter)");
+        run.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_TOOLBAR_BUTTON);
+        run.setFocusable(false);
+        run.addActionListener(e -> onExecute());
+        tb.add(run);
+        var runMore = iconButton("chevron-down", "More ways to run", null);
+        runMore.addActionListener(e -> {
+            var m = new JPopupMenu();
+            m.add(menuItem("Run selection or all", KeyStroke.getKeyStroke(KeyEvent.VK_F5, 0), this::onExecute));
+            m.add(menuItem("Run whole script", null, () -> { var t = activeTab(); if (t != null) t.execute(null); }));
+            m.add(menuItem("Run whole script in a transaction", null, () -> { var t = activeTab(); if (t != null) t.executeAllInTransaction(); }));
+            m.show(runMore, 0, runMore.getHeight());
         });
-        databaseCombo.addActionListener(e -> onDatabaseComboChanged());
-        tb.add(databaseCombo);
+        tb.add(runMore);
+        tb.add(iconButton("square", "Stop the running query (" + (Platform.isMac() ? "⌘." : "Alt+Break") + ")", this::onCancel));
+        tb.addSeparator();
+        tb.add(iconButton("refresh-cw", "Refresh Object Explorer and find servers (Shift+F5)", this::onRefreshTree));
+        tb.add(iconButton("activity", "Diagnostics for this server", () -> showDiagnostics(activeSession())));
         tb.add(Box.createHorizontalGlue());
+
+        connectionPill.putClientProperty(FlatClientProperties.STYLE,
+                "arc: 999; borderWidth: 1; focusWidth: 0; innerFocusWidth: 0; margin: 3,12,3,10");
+        connectionPill.setHorizontalTextPosition(JButton.RIGHT);
+        connectionPill.setIconTextGap(8);
+        connectionPill.setFocusable(false);
+        connectionPill.addActionListener(e -> showConnectionMenu());
+        tb.add(connectionPill);
+        var chevron = iconButton("chevron-down", "Switch server or database", this::showConnectionMenu);
+        tb.add(chevron);
         return tb;
     }
 
-    private static JButton toolButton(String text, Runnable action) {
-        var b = new JButton(text);
+    /** Icon-only toolbar button with a tooltip (null action = caller wires it). */
+    private static JButton iconButton(String icon, String tip, Runnable action) {
+        var b = new JButton(Icons.get(icon));
+        b.setToolTipText(tip);
+        b.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_TOOLBAR_BUTTON);
+        b.setFocusable(false);
+        if (action != null) b.addActionListener(e -> action.run());
+        return b;
+    }
+
+    /** "Object Explorer" title with refresh / collapse / connect buttons, and the filter box. */
+    private JComponent buildExplorerHeader() {
+        var title = new JLabel("Object Explorer");
+        title.putClientProperty(FlatClientProperties.STYLE_CLASS, "sectionTitle");
+        var buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        buttons.add(smallIconButton("plug", "Connect to server…", this::onConnectServer));
+        buttons.add(smallIconButton("refresh-cw", "Refresh and find servers", this::onRefreshTree));
+        buttons.add(smallIconButton("chevrons-down-up", "Collapse all", () -> { var x = explorer; if (x != null) x.collapseAll(); }));
+        var row = new JPanel(new BorderLayout());
+        row.add(title, BorderLayout.CENTER);
+        row.add(buttons, BorderLayout.EAST);
+
+        explorerFilter.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "Filter loaded objects");
+        explorerFilter.putClientProperty(FlatClientProperties.TEXT_FIELD_LEADING_ICON, Icons.get("search", Icons.SMALL));
+        explorerFilter.putClientProperty(FlatClientProperties.TEXT_FIELD_SHOW_CLEAR_BUTTON, true);
+        explorerFilter.setToolTipText("Highlights matching loaded objects; Enter jumps to the next match");
+        explorerFilter.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            private void changed() { var x = explorer; if (x != null) x.setFilter(explorerFilter.getText()); }
+            @Override public void insertUpdate(javax.swing.event.DocumentEvent e) { changed(); }
+            @Override public void removeUpdate(javax.swing.event.DocumentEvent e) { changed(); }
+            @Override public void changedUpdate(javax.swing.event.DocumentEvent e) { changed(); }
+        });
+        explorerFilter.addActionListener(e -> { var x = explorer; if (x != null) x.nextMatch(); });
+
+        var header = new JPanel(new BorderLayout(0, 6));
+        header.setBorder(BorderFactory.createEmptyBorder(8, 10, 6, 6));
+        header.add(row, BorderLayout.NORTH);
+        header.add(explorerFilter, BorderLayout.CENTER);
+        return header;
+    }
+
+    private static JButton smallIconButton(String icon, String tip, Runnable action) {
+        var b = new JButton(Icons.get(icon, Icons.SMALL));
+        b.setToolTipText(tip);
+        b.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_TOOLBAR_BUTTON);
         b.setFocusable(false);
         b.addActionListener(e -> action.run());
         return b;
@@ -860,28 +926,56 @@ public final class MainFrame extends JFrame {
             }
         });
         left.add(healthDot);
+        connectionStatus.putClientProperty(FlatClientProperties.STYLE_CLASS, "muted");
         left.add(connectionStatus);
-        var sep = new JLabel("  |  ");
-        sep.setForeground(Palette.disabled());
+        var sep = new JLabel("·");
+        sep.putClientProperty(FlatClientProperties.STYLE_CLASS, "subtle");
         left.add(sep);
+        serverVersionStatus.putClientProperty(FlatClientProperties.STYLE_CLASS, "subtle");
         left.add(serverVersionStatus);
         bar.add(left, BorderLayout.WEST);
-        activeDocStatus.setForeground(Palette.muted());
-        bar.add(activeDocStatus, BorderLayout.EAST);
+        var right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 14, 0));
+        right.setOpaque(false);
+        activeDocStatus.putClientProperty(FlatClientProperties.STYLE_CLASS, "muted");
+        caretStatus.putClientProperty(FlatClientProperties.STYLE_CLASS, "subtle");
+        right.add(activeDocStatus);
+        right.add(caretStatus);
+        bar.add(right, BorderLayout.EAST);
         return bar;
     }
 
-    private void setOutputVisible(boolean visible) {
-        output.setVisible(visible);
-        showOutputItem.setSelected(visible);
-        if (visible) outerSplit.setDividerLocation(Math.max(200, outerSplit.getHeight() - 180));
+    /** Folds the output panel down to its header bar, or opens it again. EDT. */
+    private void setOutputCollapsed(boolean collapsed) {
+        if (collapsed == output.isCollapsed()) return;
+        if (collapsed) {
+            expandedOutputDivider = outerSplit.getDividerLocation();
+            output.setCollapsed(true);
+            output.setMinimumSize(new Dimension(0, output.headerHeight()));
+            outerSplit.setDividerLocation(outerSplit.getHeight() - outerSplit.getDividerSize() - output.headerHeight());
+        } else {
+            output.setCollapsed(false);
+            var fallback = Math.max(200, outerSplit.getHeight() - 200);
+            outerSplit.setDividerLocation(expandedOutputDivider > 0 && expandedOutputDivider < outerSplit.getHeight() - 60
+                    ? expandedOutputDivider : fallback);
+        }
+        showOutputItem.setSelected(!collapsed);
         outerSplit.revalidate();
     }
 
     private void showOutput() {
-        Ui.later(() -> {
-            if (!output.isVisible()) setOutputVisible(true);
-        });
+        Ui.later(() -> setOutputCollapsed(false));
+    }
+
+    private void updateCaretStatus() {
+        var tab = activeTab();
+        if (tab == null) {
+            caretStatus.setText("");
+            return;
+        }
+        var ed = tab.editor();
+        var line = ed.getCaretLineNumber() + 1;
+        var col = ed.getCaretOffsetFromLineStart() + 1;
+        caretStatus.setText("Ln " + line + ", Col " + col);
     }
 
     private void onNewQuery() {
@@ -1485,7 +1579,6 @@ public final class MainFrame extends JFrame {
         var ex = explorer;
         if (ex == null) return;
         for (var s : session == null ? registry.sessions() : List.of(session)) ex.rebuildServer(s);
-        dbComboServerKey = null;
-        Ui.edt(this::refreshDatabaseCombo);
+        Ui.edt(this::syncToActiveTab);
     }
 }

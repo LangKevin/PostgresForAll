@@ -1,8 +1,11 @@
 package com.postgresforall.app.ui.dialogs;
 
 import com.postgresforall.app.ui.Palette;
+import net.miginfocom.swing.MigLayout;
 
 import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.event.DocumentEvent;
@@ -11,24 +14,26 @@ import java.awt.Component;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-/** One-line text prompt with an optional validator. */
+/** One-line text prompt with an optional validator (red outline + message when invalid). */
 public final class TextInputDialog extends BaseDialog {
     private final JTextField entry;
     private final JTextArea body;
-    private final String bodyText;
+    private final JLabel error = new JLabel(" ");
     private final JButton ok;
     private Function<String, String> validator;
 
     public TextInputDialog(Component owner, String title, String header, String bodyText, String initial) {
         super(owner, title);
-        this.bodyText = bodyText;
         body = wrappingText(bodyText, 44);
         entry = new JTextField(initial, 30);
         entry.selectAll();
-        build(header, body, entry);
-        ok = addButton("OK", this::accept);
+        error.putClientProperty("FlatLaf.styleClass", "danger small");
+        var content = new JPanel(new MigLayout("insets 0, fillx, gapy 4", "[grow,fill]"));
+        content.add(entry, "wrap");
+        content.add(error);
+        build(header, body, content);
+        ok = addPrimaryButton("OK", this::accept);
         addButton("Cancel", this::cancel);
-        getRootPane().setDefaultButton(ok);
         entry.getDocument().addDocumentListener(new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e) { revalidateNow(); }
             @Override public void removeUpdate(DocumentEvent e) { revalidateNow(); }
@@ -52,12 +57,13 @@ public final class TextInputDialog extends BaseDialog {
         var msg = validator == null ? null : validator.apply(entry.getText());
         if (msg == null) {
             ok.setEnabled(!entry.getText().isBlank());
-            body.setText(bodyText);
-            body.setForeground(Palette.muted());
+            entry.putClientProperty("JComponent.outline", null);
+            error.setText(" ");
         } else {
             ok.setEnabled(false);
-            body.setText(msg);
-            body.setForeground(Palette.danger());
+            entry.putClientProperty("JComponent.outline", "error");
+            error.setText(msg);
+            error.setForeground(Palette.danger());
         }
     }
 

@@ -1,5 +1,19 @@
 # UI modernization plan
 
+> **Status (2026-10-21): phases 1–5 done.** Decisions: follow the system's light/dark
+> setting, Postgres-blue accent, outline icons; no phase 6 extras.
+>
+> **Verified by:**
+> - `ThemeTest`: WCAG AA contrast in all 4 themes, and no hard-coded colours
+> - the GUI E2E test in light, dark and dark at 150% scaling, locally and on the CI Mac
+>
+> **Deviations:**
+> - **Explorer search** highlights and jumps between matches among loaded nodes (dimming
+>   the rest) instead of hiding non-matches.
+> - **Windows title bar:** FlatLaf already embeds the menu bar there.
+> - **Toolbar:** the Run options sit in a separate ▾ button beside Run.
+> - **Login brand pane:** uses a fixed Postgres blue (`PFA.brand`) in both themes.
+
 The goal is for PostgresForAll to look like a current desktop developer tool (in the
 style of DataGrip, TablePlus or VS Code) on both Windows and macOS. It should follow
 the system's light or dark mode and keep every existing feature and shortcut.

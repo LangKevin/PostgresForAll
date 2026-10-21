@@ -1,12 +1,17 @@
 package com.postgresforall.app.ui.query;
 
+import com.formdev.flatlaf.FlatClientProperties;
+import com.postgresforall.app.ui.FileDialogs;
 import com.postgresforall.app.ui.Palette;
 import com.postgresforall.app.ui.Ui;
+import com.postgresforall.app.ui.theme.Fonts;
+import com.postgresforall.app.ui.theme.Icons;
 import com.postgresforall.core.model.QueryResult.Column;
 import com.postgresforall.core.service.CellText;
 
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
+import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
@@ -19,47 +24,85 @@ import javax.swing.RowSorter;
 import javax.swing.SortOrder;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.JTableHeader;
+import javax.swing.table.TableColumnModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.BorderLayout;
 import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-/** One result set: a title strip and a sortable, copyable grid. */
+/** One result set: a title strip with copy / export actions over a sortable, copyable grid. */
 public final class ResultGrid extends JPanel {
     private final List<Column> columns;
     private final List<Object[]> rows;
     private final JTable table;
     private final TableRowSorter<Model> sorter;
+    private int hoverRow = -1;
 
     public ResultGrid(int index, String statement, List<Column> columns, List<Object[]> rows) {
         super(new BorderLayout());
         this.columns = columns;
         this.rows = rows;
-        setBorder(BorderFactory.createLineBorder(new java.awt.Color(221, 221, 221)));
+        setBorder(BorderFactory.createLineBorder(Palette.border()));
 
+        // ---- title strip -----------------------------------------------------
         var strip = new JPanel(new BorderLayout(12, 0));
-        strip.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        strip.setBackground(Palette.headerStrip());
+        strip.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, Palette.border()),
+                BorderFactory.createEmptyBorder(3, 10, 3, 6)));
         var title = new JLabel("Result set " + index + " — " + truncate(statement, 80));
         title.setFont(title.getFont().deriveFont(Font.BOLD));
-        var count = new JLabel(String.format("%,d row(s)", rows.size()));
-        count.setForeground(Palette.muted());
         strip.add(title, BorderLayout.CENTER);
-        strip.add(count, BorderLayout.EAST);
+        var right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        right.setOpaque(false);
+        var count = new JLabel(String.format("%,d row(s)", rows.size()));
+        count.putClientProperty(FlatClientProperties.STYLE_CLASS, "muted");
+        count.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 6));
+        right.add(count);
+        right.add(toolButton("copy", "Copy all rows as…", b -> copyMenu().show(b, 0, b.getHeight())));
+        right.add(toolButton("download", "Export to CSV…", b -> exportCsv()));
+        strip.add(right, BorderLayout.EAST);
         add(strip, BorderLayout.NORTH);
 
+        // ---- grid ------------------------------------------------------------
         var model = new Model();
-        table = new JTable(model);
+        table = new JTable(model) {
+            @Override
+            protected JTableHeader createDefaultTableHeader() {
+                return new JTableHeader(columnModel) {
+                    @Override
+                    public String getToolTipText(MouseEvent e) {
+                        var vc = columnAtPoint(e.getPoint());
+                        if (vc < 0) return null;
+                        var c = ResultGrid.this.columns.get(convertColumnIndexToModel(vc));
+                        return c.name() + "  ·  " + c.dataType();
+                    }
+                };
+            }
+        };
+        table.getTableHeader().setToolTipText(""); // enables per-column tooltips
         sorter = new TableRowSorter<>(model);
         for (var c = 0; c < columns.size(); c++) sorter.setComparator(c, CELL_ORDER);
         table.setRowSorter(sorter);
@@ -70,6 +113,18 @@ public final class ResultGrid extends JPanel {
         table.setFillsViewportHeight(true);
         table.getTableHeader().setReorderingAllowed(true);
         table.setDefaultRenderer(Object.class, new CellRenderer());
+        table.addMouseMotionListener(new MouseMotionAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                setHover(table.rowAtPoint(e.getPoint()));
+            }
+        });
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseExited(MouseEvent e) {
+                setHover(-1);
+            }
+        });
         sizeColumns();
 
         table.getActionMap().put("copy", action(this::copySelection));
@@ -83,7 +138,9 @@ public final class ResultGrid extends JPanel {
             @Override public void mouseReleased(MouseEvent e) { maybeHeaderMenu(e); }
         });
 
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        var scroll = new JScrollPane(table);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        add(scroll, BorderLayout.CENTER);
     }
 
     public JTable table() {
@@ -92,6 +149,21 @@ public final class ResultGrid extends JPanel {
 
     public List<Object[]> rows() {
         return rows;
+    }
+
+    private void setHover(int row) {
+        if (row == hoverRow) return;
+        hoverRow = row;
+        table.repaint();
+    }
+
+    private static JButton toolButton(String icon, String tip, java.util.function.Consumer<JButton> action) {
+        var b = new JButton(Icons.get(icon, Icons.SMALL));
+        b.setToolTipText(tip);
+        b.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_TOOLBAR_BUTTON);
+        b.setFocusable(false);
+        b.addActionListener(e -> action.accept(b));
+        return b;
     }
 
     // ---- Model / rendering ----------------------------------------------
@@ -107,19 +179,48 @@ public final class ResultGrid extends JPanel {
         }
     }
 
-    private static final class CellRenderer extends DefaultTableCellRenderer {
+    /** Hover / zebra backgrounds, monospaced right-aligned numbers, NULL as a muted pill. */
+    private final class CellRenderer extends DefaultTableCellRenderer {
+        private boolean isNull;
+
         @Override
         public Component getTableCellRendererComponent(JTable t, Object value, boolean sel, boolean focus,
                                                        int row, int col) {
             super.getTableCellRendererComponent(t, value == null ? "NULL" : CellText.of(value), sel, focus, row, col);
-            setHorizontalAlignment(value instanceof Number ? SwingConstants.RIGHT : SwingConstants.LEFT);
-            if (value == null) {
-                setFont(getFont().deriveFont(Font.ITALIC));
-                if (!sel) setForeground(Palette.subtle());
-            } else if (!sel) {
-                setForeground(t.getForeground());
+            isNull = value == null;
+            var number = value instanceof Number;
+            setHorizontalAlignment(number ? SwingConstants.RIGHT : SwingConstants.LEFT);
+            setFont(number ? Fonts.mono(0) : isNull ? t.getFont().deriveFont(Font.ITALIC, t.getFont().getSize2D() - 1f) : t.getFont());
+            setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
+            if (!sel) {
+                var alt = UIManager.getColor("Table.alternateRowColor");
+                setBackground(row == hoverRow ? Palette.hoverRow()
+                        : alt != null && row % 2 == 1 ? alt : t.getBackground());
+                setForeground(isNull ? Palette.subtle() : t.getForeground());
             }
             return this;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            if (!isNull) {
+                super.paintComponent(g);
+                return;
+            }
+            g.setColor(getBackground());
+            g.fillRect(0, 0, getWidth(), getHeight());
+            var g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            var fm = g2.getFontMetrics(getFont());
+            var w = fm.stringWidth("NULL") + 10;
+            var h = Math.min(getHeight() - 6, fm.getHeight() + 2);
+            g2.setColor(Palette.nullBackground());
+            g2.fillRoundRect(4, (getHeight() - h) / 2, w, h, h, h);
+            g2.dispose();
+            var opaque = isOpaque();
+            setOpaque(false);
+            super.paintComponent(g);
+            setOpaque(opaque);
         }
     }
 
@@ -141,23 +242,24 @@ public final class ResultGrid extends JPanel {
     };
 
     private void sizeColumns() {
-        var fm = table.getFontMetrics(table.getFont());
+        var fm = table.getFontMetrics(Fonts.mono(0));
         var headerFm = table.getTableHeader().getFontMetrics(table.getTableHeader().getFont());
         var sample = Math.min(rows.size(), 300);
+        TableColumnModel cm = table.getColumnModel();
         for (var c = 0; c < columns.size(); c++) {
-            var w = headerFm.stringWidth(columns.get(c).name()) + 28;
+            var w = headerFm.stringWidth(columns.get(c).name()) + 36;
             for (var r = 0; r < sample; r++) {
                 var row = rows.get(r);
                 var v = c < row.length ? row[c] : null;
                 var text = v == null ? "NULL" : CellText.of(v);
                 if (text.length() > 120) text = text.substring(0, 120);
-                w = Math.max(w, fm.stringWidth(text) + 16);
+                w = Math.max(w, fm.stringWidth(text) + 24);
             }
-            table.getColumnModel().getColumn(c).setPreferredWidth(Math.max(40, Math.min(600, w)));
+            cm.getColumn(c).setPreferredWidth(Math.max(48, Math.min(600, w)));
         }
     }
 
-    // ---- Copy -------------------------------------------------------------
+    // ---- Copy / export ----------------------------------------------------
 
     private void copySelection() {
         copy(false, false);
@@ -197,14 +299,42 @@ public final class ResultGrid extends JPanel {
             }
             sb.append(String.join("\t", cells)).append('\n');
         }
-        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(sb.toString()), null);
+        toClipboard(sb.toString());
+    }
+
+    private static void toClipboard(String text) {
+        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(text), null);
+    }
+
+    private JPopupMenu copyMenu() {
+        var m = new JPopupMenu();
+        m.add(item("Copy all as TSV (with headers)", () -> toClipboard(ResultExport.tsv(columns, rows))));
+        m.add(item("Copy all as CSV", () -> toClipboard(ResultExport.csv(columns, rows))));
+        m.add(item("Copy all as JSON", () -> toClipboard(ResultExport.json(columns, rows))));
+        return m;
+    }
+
+    private void exportCsv() {
+        var path = FileDialogs.save(this, "Export to CSV", null, "result.csv", "CSV files", "csv");
+        if (path == null) return;
+        try {
+            Files.writeString(path, ResultExport.csv(columns, rows), StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            Ui.error(this, "Export failed", ex.getMessage());
+        }
+    }
+
+    private static JMenuItem item(String text, Runnable r) {
+        var mi = new JMenuItem(text);
+        mi.addActionListener(e -> r.run());
+        return mi;
     }
 
     // ---- Menus ------------------------------------------------------------
 
     private JPopupMenu gridMenu() {
         var m = new JPopupMenu();
-        var copy = new JMenuItem("Copy");
+        var copy = new JMenuItem("Copy", Icons.get("copy", Icons.SMALL));
         copy.setFont(copy.getFont().deriveFont(Font.BOLD));
         copy.setAccelerator(Ui.menuKey(KeyEvent.VK_C));
         copy.addActionListener(e -> copySelection());
@@ -245,7 +375,7 @@ public final class ResultGrid extends JPanel {
         desc.addActionListener(a -> sorter.setSortKeys(List.of(new RowSorter.SortKey(modelCol, SortOrder.DESCENDING))));
         var clear = new JMenuItem("Clear sort");
         clear.addActionListener(a -> sorter.setSortKeys(null));
-        var find = new JMenuItem("Find in column…");
+        var find = new JMenuItem("Find in column…", Icons.get("search", Icons.SMALL));
         find.addActionListener(a -> new ColumnFindDialog(SwingUtilities.getWindowAncestor(this), this, modelCol).setVisible(true));
         m.add(asc);
         m.add(desc);
@@ -285,8 +415,8 @@ public final class ResultGrid extends JPanel {
 
     /** For callers that want the grid to keep a minimum visible height. */
     public JComponent withMinHeight(int h) {
-        setMinimumSize(new java.awt.Dimension(100, h));
-        setPreferredSize(new java.awt.Dimension(400, h));
+        setMinimumSize(new Dimension(100, h));
+        setPreferredSize(new Dimension(400, h));
         return this;
     }
 }

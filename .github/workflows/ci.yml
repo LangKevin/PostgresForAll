@@ -49,10 +49,11 @@ jobs:
           sleep 15
           if kill -0 "$PID"; then echo "GUI running"; kill "$PID"; else echo "GUI exited"; cat gui-launch.log; exit 1; fi
 
-      - name: GUI end-to-end test
+      - name: GUI end-to-end test (light and dark themes)
         run: |
           ./gradlew :app:installDist --no-daemon
-          java -cp "app/build/install/PostgresForAll/lib/*" tools/e2e/E2E.java e2e-screenshots
+          java -Dpfa.theme=light -cp "app/build/install/PostgresForAll/lib/*" tools/e2e/E2E.java e2e-screenshots/light
+          java -Dpfa.theme=dark -cp "app/build/install/PostgresForAll/lib/*" tools/e2e/E2E.java e2e-screenshots/dark
 
       - name: Upload results
         if: always()

@@ -16,6 +16,10 @@ import com.postgresforall.core.service.QueryExecutor;
 import com.postgresforall.core.service.ScriptSplitter;
 import com.postgresforall.core.service.ServerSession;
 import com.postgresforall.core.util.CancelToken;
+import com.formdev.flatlaf.FlatClientProperties;
+import com.postgresforall.app.ui.theme.Fonts;
+import com.postgresforall.app.ui.theme.Icons;
+import com.postgresforall.app.ui.theme.Theme;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rtextarea.RTextScrollPane;
@@ -40,6 +44,7 @@ import javax.swing.text.BadLocationException;
 import javax.swing.text.SimpleAttributeSet;
 import javax.swing.text.StyleConstants;
 import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -91,11 +96,15 @@ public final class QueryTab extends JPanel {
 
     private final RSyntaxTextArea editor = new RSyntaxTextArea(6, 80);
     private final ChipLabel chip = new ChipLabel();
-    private final JCheckBox wrapBox = new JCheckBox("Wrap in transaction (BEGIN...COMMIT/ROLLBACK)");
+    private final javax.swing.JToggleButton wrapBox = new javax.swing.JToggleButton("Transaction",
+            Icons.get("shield", Icons.SMALL));
     private final JLabel statusLabel = new JLabel("Ready.");
     private final JPanel resultsHolder = new JPanel(new BorderLayout());
     private final JLabel capBanner = new JLabel();
-    private final JTextPane messages = new JTextPane();
+    private final javax.swing.DefaultListModel<Message> messageModel = new javax.swing.DefaultListModel<>();
+    private final javax.swing.JList<Message> messages = new javax.swing.JList<>(messageModel);
+    private final Runnable themeListener = this::applyEditorTheme;
+    private RTextScrollPane editorScroll;
     private final JTabbedPane resultTabs = new JTabbedPane();
     private final Timer wrapCheck;
 
@@ -108,16 +117,24 @@ public final class QueryTab extends JPanel {
         this.currentDatabase = manager.profile().database;
 
         // ---- top strip --------------------------------------------------
-        var strip = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 4));
-        strip.add(chip);
+        var strip = new JPanel(new BorderLayout(10, 0));
+        strip.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 10));
+        var left = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        left.add(chip);
         wrapBox.setToolTipText("Wrap the script in BEGIN ... COMMIT / ROLLBACK on error.");
-        strip.add(wrapBox);
-        var loadBtn = new JButton("Load file...");
-        loadBtn.setToolTipText("Replace this tab's contents with a file from disk.");
+        wrapBox.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_TOOLBAR_BUTTON);
+        wrapBox.setFocusable(false);
+        left.add(wrapBox);
+        var loadBtn = new JButton(Icons.get("folder-open", Icons.SMALL));
+        loadBtn.setToolTipText("Load a file into this tab (replaces its contents)");
+        loadBtn.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_TOOLBAR_BUTTON);
+        loadBtn.setFocusable(false);
         loadBtn.addActionListener(e -> loadFile());
-        strip.add(loadBtn);
-        statusLabel.setForeground(Palette.muted());
-        strip.add(statusLabel);
+        left.add(loadBtn);
+        strip.add(left, BorderLayout.WEST);
+        statusLabel.putClientProperty(FlatClientProperties.STYLE_CLASS, "muted");
+        statusLabel.setHorizontalAlignment(JLabel.RIGHT);
+        strip.add(statusLabel, BorderLayout.CENTER);
         add(strip, BorderLayout.NORTH);
 
         // ---- editor ------------------------------------------------------
@@ -125,7 +142,8 @@ public final class QueryTab extends JPanel {
         editor.setCodeFoldingEnabled(false);
         editor.setAntiAliasingEnabled(true);
         editor.setTabSize(4);
-        editor.setFont(editorFont());
+        editor.setBracketMatchingEnabled(true);
+        editor.setPaintMatchedBracketPair(true);
         editor.setText("-- Welcome to PostgresForAll\n-- F5 (or " + Ui.menuKeyText()
                 + "Enter) runs the buffer, or just the selected text\n\nSELECT version();\n");
         editor.discardAllEdits();
@@ -140,21 +158,30 @@ public final class QueryTab extends JPanel {
         }));
         var scroll = new RTextScrollPane(editor);
         scroll.setLineNumbersEnabled(true);
+        scroll.setBorder(BorderFactory.createMatteBorder(1, 0, 1, 0, Palette.border()));
+        editorScroll = scroll;
+        applyEditorTheme();
+        Theme.onChange(themeListener);
 
         // ---- results -----------------------------------------------------
         capBanner.setOpaque(true);
+        capBanner.setIcon(Icons.get("info", Icons.SMALL));
         capBanner.setBackground(Palette.bannerInfo());
         capBanner.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(Palette.bannerInfoBorder()),
                 BorderFactory.createEmptyBorder(4, 8, 4, 8)));
         capBanner.setVisible(false);
         var resultsPanel = new JPanel(new BorderLayout(0, 4));
+        resultsPanel.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
         resultsPanel.add(capBanner, BorderLayout.NORTH);
         resultsPanel.add(resultsHolder, BorderLayout.CENTER);
-        messages.setEditable(false);
-        messages.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        resultTabs.addTab("Results", resultsPanel);
-        resultTabs.addTab("Messages", new JScrollPane(messages));
+        showEmptyState("play", "Run a query (F5 / " + Ui.menuKeyText() + "Enter) to see results here");
+        messages.setCellRenderer(new MessageRenderer());
+        messages.setFocusable(true);
+        var messagesScroll = new JScrollPane(messages);
+        messagesScroll.setBorder(BorderFactory.createEmptyBorder());
+        resultTabs.addTab("Results", Icons.get("table", Icons.SMALL), resultsPanel);
+        resultTabs.addTab("Messages", Icons.get("bell", Icons.SMALL), messagesScroll);
 
         var split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, scroll, resultTabs);
         split.setResizeWeight(1.0 / 3.0);
@@ -185,13 +212,49 @@ public final class QueryTab extends JPanel {
         reevaluateTransactionWrap();
     }
 
-    private static Font editorFont() {
-        var name = switch (Platform.current()) {
-            case WINDOWS -> "Consolas";
-            case MAC -> "Menlo";
-            case LINUX -> Font.MONOSPACED;
-        };
-        return new Font(name, Font.PLAIN, 13);
+    /** RSyntaxTextArea colours for the current light / dark theme, on the theme's own background. */
+    private void applyEditorTheme() {
+        var name = Theme.isDark() ? "dark.xml" : "idea.xml";
+        try (var in = org.fife.ui.rsyntaxtextarea.Theme.class.getResourceAsStream(
+                "/org/fife/ui/rsyntaxtextarea/themes/" + name)) {
+            if (in != null) org.fife.ui.rsyntaxtextarea.Theme.load(in).apply(editor);
+        } catch (IOException ignored) {
+            // keep the defaults
+        }
+        var bg = javax.swing.UIManager.getColor("TextArea.background");
+        if (bg != null) editor.setBackground(bg);
+        editor.setFont(Fonts.mono(1));
+        if (editorScroll != null) {
+            var gutter = editorScroll.getGutter();
+            gutter.setBackground(bg);
+            gutter.setBorderColor(Palette.border());
+            gutter.setLineNumberColor(Palette.subtle());
+            gutter.setLineNumberFont(Fonts.mono(0));
+            editorScroll.setBorder(BorderFactory.createMatteBorder(1, 0, 1, 0, Palette.border()));
+        }
+    }
+
+    /** A centred icon + hint where results will appear. */
+    private void showEmptyState(String icon, String text) {
+        var label = new JLabel(text, Icons.get(icon, Icons.LARGE), JLabel.CENTER);
+        label.setHorizontalTextPosition(JLabel.CENTER);
+        label.setVerticalTextPosition(JLabel.BOTTOM);
+        label.setIconTextGap(10);
+        label.putClientProperty(FlatClientProperties.STYLE_CLASS, "muted");
+        resultsHolder.removeAll();
+        resultsHolder.add(label, BorderLayout.CENTER);
+        resultsHolder.revalidate();
+        resultsHolder.repaint();
+    }
+
+    /** All messages as text (severity + text per line), e.g. for tests and copying. */
+    public String messagesText() {
+        var sb = new StringBuilder();
+        for (var i = 0; i < messageModel.size(); i++) {
+            var m = messageModel.get(i);
+            sb.append(m.severity()).append(": ").append(m.text()).append('\n');
+        }
+        return sb.toString();
     }
 
     private static JMenuItem item(String text, Runnable r) {
@@ -302,13 +365,12 @@ public final class QueryTab extends JPanel {
 
     private void refreshChip(boolean ok, String error) {
         var m = manager;
-        chip.setText("DB: " + connectionLabel());
+        chip.setText(connectionLabel());
+        chip.ok = ok;
         if (ok) {
-            chip.color = Palette.success();
             chip.setToolTipText("<html>Connected: " + Ui.escapeHtml(m.profile().username + "@" + m.profile().host + ":"
                     + m.profile().port + "/" + currentDatabase) + "<br>PostgreSQL " + m.serverVersion() + "</html>");
         } else {
-            chip.color = Palette.danger();
             chip.setToolTipText(error != null ? error : "Connection failed.");
         }
         chip.repaint();
@@ -377,6 +439,12 @@ public final class QueryTab extends JPanel {
         execute(sel == null || sel.isBlank() ? null : sel);
     }
 
+    /** Runs the whole script wrapped in BEGIN / COMMIT (when the script allows it). Call on the EDT. */
+    public void executeAllInTransaction() {
+        if (wrapBox.isEnabled()) wrapBox.setSelected(true);
+        execute(null);
+    }
+
     /** Runs {@code selectionOrNull} (or the whole buffer). Call on the EDT. */
     public void execute(String selectionOrNull) {
         if (executing) return;
@@ -384,11 +452,9 @@ public final class QueryTab extends JPanel {
         if (sql.isBlank()) return;
 
         executing = true;
-        resultsHolder.removeAll();
-        resultsHolder.revalidate();
-        resultsHolder.repaint();
+        showEmptyState("loader", "Running…");
         capBanner.setVisible(false);
-        messages.setText("");
+        messageModel.clear();
         setStatus("Executing...");
 
         var token = new CancelToken();
@@ -424,6 +490,12 @@ public final class QueryTab extends JPanel {
             capBanner.setVisible(true);
         }
 
+        resultsHolder.removeAll();
+        if (shown == 0) {
+            showEmptyState(result.hasErrors() ? "circle-alert" : "circle-check", result.hasErrors()
+                    ? "No results — the script stopped on an error (see Messages)"
+                    : "No result sets — " + result.statementsExecuted() + " statement(s) ran (see Messages)");
+        }
         if (shown > 0) {
             JComponent content;
             if (shown <= 3) {
@@ -472,24 +544,53 @@ public final class QueryTab extends JPanel {
     private static final DateTimeFormatter MSG_TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private void appendMessage(Message m) {
-        var color = switch (m.severity()) {
-            case ERROR -> Palette.danger();
-            case WARNING -> Palette.warning();
-            case NOTICE -> Palette.notice();
-            case INFO -> messages.getForeground();
-        };
-        var doc = messages.getStyledDocument();
-        try {
-            var tag = new SimpleAttributeSet();
-            StyleConstants.setBold(tag, true);
-            StyleConstants.setForeground(tag, color);
-            var body = new SimpleAttributeSet();
-            StyleConstants.setForeground(body, m.severity() == MessageSeverity.INFO ? messages.getForeground() : color);
-            var sev = m.severity().name().charAt(0) + m.severity().name().substring(1).toLowerCase(Locale.ROOT);
-            doc.insertString(doc.getLength(), String.format("%-9s", sev), tag);
-            doc.insertString(doc.getLength(), m.text().replace("\n", "\n         ") + "\n", body);
-        } catch (BadLocationException ignored) {
-            // offsets come from the document
+        messageModel.addElement(m);
+    }
+
+    /** Severity icon, muted time, text (multi-line DETAIL / HINT kept) in the severity colour. */
+    private static final class MessageRenderer extends JPanel implements javax.swing.ListCellRenderer<Message> {
+        private final JLabel icon = new JLabel();
+        private final JLabel time = new JLabel();
+        private final javax.swing.JTextArea text = new javax.swing.JTextArea();
+
+        MessageRenderer() {
+            super(new BorderLayout(8, 0));
+            setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+            var left = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+            left.setOpaque(false);
+            left.add(icon);
+            left.add(time);
+            add(left, BorderLayout.WEST);
+            text.setOpaque(false);
+            text.setEditable(false);
+            text.setBorder(null);
+            add(text, BorderLayout.CENTER);
+        }
+
+        @Override
+        public Component getListCellRendererComponent(javax.swing.JList<? extends Message> list, Message m, int index,
+                                                      boolean sel, boolean focus) {
+            var color = switch (m.severity()) {
+                case ERROR -> Palette.danger();
+                case WARNING -> Palette.warning();
+                case NOTICE -> Palette.notice();
+                case INFO -> list.getForeground();
+            };
+            icon.setIcon(switch (m.severity()) {
+                case ERROR -> Icons.tinted("circle-x", Icons.SMALL, Palette::danger);
+                case WARNING -> Icons.tinted("triangle-alert", Icons.SMALL, Palette::warning);
+                case NOTICE -> Icons.tinted("bell", Icons.SMALL, Palette::notice);
+                case INFO -> Icons.get("info", Icons.SMALL);
+            });
+            time.setText(MSG_TIME.format(m.timestamp()));
+            time.setFont(Fonts.mono(-1));
+            time.setForeground(sel ? list.getSelectionForeground() : Palette.subtle());
+            text.setText(m.text());
+            text.setFont(Fonts.mono(0));
+            text.setForeground(sel ? list.getSelectionForeground() : color);
+            setOpaque(true);
+            setBackground(sel ? list.getSelectionBackground() : list.getBackground());
+            return this;
         }
     }
 
@@ -549,34 +650,41 @@ public final class QueryTab extends JPanel {
         disposed = true;
         cancel();
         wrapCheck.stop();
+        Theme.removeOnChange(themeListener);
         var l = lease;
         Ui.bgQuiet(() -> l.close());
     }
 
-    /** Rounded "DB: 5444 / scheduleme" badge, green when connected, red on failure. */
+    /** Rounded status badge: tinted pill with a green / red dot and "5444 / scheduleme". */
     private static final class ChipLabel extends JLabel {
-        Color color = Palette.success();
+        boolean ok = true;
 
         ChipLabel() {
-            setForeground(Palette.chipText());
             setFont(getFont().deriveFont(Font.BOLD, getFont().getSize2D() - 1f));
-            setBorder(BorderFactory.createEmptyBorder(2, 9, 2, 9));
+            setBorder(BorderFactory.createEmptyBorder(3, 22, 3, 10));
         }
 
         @Override
         protected void paintComponent(Graphics g) {
             var g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(color);
-            g2.fillRoundRect(0, 0, getWidth(), getHeight(), getHeight(), getHeight());
+            var h = getHeight();
+            g2.setColor(ok ? Palette.bannerSuccess() : Palette.bannerError());
+            g2.fillRoundRect(0, 0, getWidth() - 1, h - 1, h, h);
+            g2.setColor(ok ? Palette.bannerSuccessBorder() : Palette.bannerErrorBorder());
+            g2.drawRoundRect(0, 0, getWidth() - 1, h - 1, h, h);
+            g2.setColor(ok ? Palette.success() : Palette.danger());
+            var d = 8;
+            g2.fillOval(9, (h - d) / 2, d, d);
             g2.dispose();
+            setForeground(javax.swing.UIManager.getColor("Label.foreground"));
             super.paintComponent(g);
         }
 
         @Override
         public Dimension getPreferredSize() {
             var d = super.getPreferredSize();
-            return new Dimension(d.width, Math.max(d.height, 20));
+            return new Dimension(d.width, Math.max(d.height, 22));
         }
     }
 }

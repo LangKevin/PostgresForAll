@@ -93,6 +93,10 @@ public final class Theme {
         listeners.add(r);
     }
 
+    public static void removeOnChange(Runnable r) {
+        listeners.remove(r);
+    }
+
     /** Switches appearance now (animated). Call on the EDT. */
     public static void setMode(Mode m) {
         mode = m;

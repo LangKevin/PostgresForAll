@@ -55,6 +55,9 @@ class ThemeTest {
                 assertThat(contrast(c, b)).as(laf + ": " + key + " on " + bg).isGreaterThanOrEqualTo(4.5);
             }
         }
+        // White brand text on the brand colour (login pane).
+        assertThat(contrast(UIManager.getColor("PFA.chipText"), UIManager.getColor("PFA.brand")))
+                .as(laf + ": text on PFA.brand").isGreaterThanOrEqualTo(4.5);
         // Banner text uses the normal label colour on the banner background.
         var fg = UIManager.getColor("Label.foreground");
         for (var banner : List.of("PFA.bannerInfo", "PFA.bannerWarning", "PFA.bannerError", "PFA.bannerSuccess")) {

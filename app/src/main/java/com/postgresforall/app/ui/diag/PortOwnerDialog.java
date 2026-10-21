@@ -3,6 +3,7 @@ package com.postgresforall.app.ui.diag;
 import com.postgresforall.app.ui.Palette;
 import com.postgresforall.app.ui.Ui;
 import com.postgresforall.app.ui.dialogs.BaseDialog;
+import com.postgresforall.app.ui.theme.Icons;
 import com.postgresforall.core.platform.PortOwners;
 import com.postgresforall.core.platform.PortOwners.Owner;
 
@@ -16,7 +17,6 @@ import javax.swing.JScrollPane;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.Font;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -31,21 +31,27 @@ public final class PortOwnerDialog extends BaseDialog {
         super(owner, "Port Owner");
         this.port = port;
         list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
-        var scroll = new JScrollPane(list);
-        scroll.setPreferredSize(new Dimension(520, 200));
-        var center = new JPanel(new BorderLayout(0, 6));
+        list.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+        var holder = new JPanel(new BorderLayout());
+        holder.add(list, BorderLayout.NORTH);
+        var scroll = new JScrollPane(holder);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.setPreferredSize(new Dimension(540, 210));
+        var center = new JPanel(new BorderLayout(0, 8));
         var title = new JLabel("Owners");
-        title.setFont(title.getFont().deriveFont(Font.BOLD));
+        title.putClientProperty("FlatLaf.styleClass", "sectionTitle");
         center.add(title, BorderLayout.NORTH);
         center.add(scroll, BorderLayout.CENTER);
 
-        build("What's using port " + port + "?",
-                wrappingText("Postgres can't bind because another process owns this port. "
-                        + "Identify it below — kill it only if you're sure.", 56),
-                center);
+        var body = wrappingText("Postgres can't bind because another process owns this port. "
+                + "Identify it below — kill it only if you're sure.", 56);
+        body.putClientProperty("FlatLaf.styleClass", "muted");
+        build("What's using port " + port + "?", body, center);
         killBtn = addButton("Kill process", this::onKill);
-        killBtn.setForeground(Palette.danger());
-        addButton("Re-check", this::refresh);
+        killBtn.setIcon(Icons.get("power", Icons.SMALL));
+        killBtn.putClientProperty("FlatLaf.styleClass", "danger");
+        var recheck = addButton("Re-check", this::refresh);
+        recheck.setIcon(Icons.get("refresh-cw", Icons.SMALL));
         var close = addButton("Close", this::cancel);
         getRootPane().setDefaultButton(close);
         setResizable(true);
@@ -59,7 +65,9 @@ public final class PortOwnerDialog extends BaseDialog {
     private void refresh() {
         killBtn.setEnabled(false);
         list.removeAll();
-        list.add(new JLabel("Looking..."));
+        var looking = new JLabel("Looking...", Icons.get("loader", Icons.SMALL), JLabel.LEADING);
+        looking.putClientProperty("FlatLaf.styleClass", "muted");
+        list.add(looking);
         list.revalidate();
         Ui.bgQuiet(() -> {
             var found = PortOwners.find(port, null);
@@ -71,24 +79,35 @@ public final class PortOwnerDialog extends BaseDialog {
         owners = found;
         list.removeAll();
         if (found.isEmpty()) {
-            var empty = new JLabel("Nothing is currently using this port.");
-            empty.setForeground(Palette.muted());
+            var empty = new JLabel("Nothing is currently using this port.",
+                    Icons.tinted("circle-check", Icons.NORMAL, Palette::success), JLabel.LEADING);
+            empty.putClientProperty("FlatLaf.styleClass", "muted");
             list.add(empty);
         }
         for (var o : found) {
-            var row = new JPanel();
-            row.setLayout(new BoxLayout(row, BoxLayout.Y_AXIS));
-            row.setBorder(BorderFactory.createEmptyBorder(4, 4, 6, 4));
-            row.setAlignmentX(LEFT_ALIGNMENT);
-            row.add(new JLabel("<html><b>PID:</b> " + o.pid() + "  <font color='#bbbbbb'>•</font>  <b>"
-                    + Ui.escapeHtml(o.processName()) + "</b></html>"));
+            var card = new RoundedPanel(new BorderLayout(10, 0))
+                    .fill(RoundedPanel::panelBackground).outline(Palette::border);
+            card.setAlignmentX(LEFT_ALIGNMENT);
+            card.add(new JLabel(Icons.get("terminal", Icons.LARGE)), BorderLayout.WEST);
+            var text = new JPanel();
+            text.setOpaque(false);
+            text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
+            var name = new JLabel(o.processName());
+            name.putClientProperty("FlatLaf.styleClass", "semibold");
+            var pid = new JLabel("PID " + o.pid());
+            pid.putClientProperty("FlatLaf.styleClass", "small muted");
+            text.add(name);
+            text.add(pid);
             if (!o.detail().isBlank()) {
                 var d = new JLabel(o.detail());
-                d.setForeground(Palette.subtle());
-                row.add(d);
+                d.putClientProperty("FlatLaf.styleClass", "small subtle");
+                d.setToolTipText(o.detail());
+                text.add(d);
             }
-            list.add(row);
-            list.add(Box.createVerticalStrut(2));
+            card.add(text, BorderLayout.CENTER);
+            card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
+            list.add(card);
+            list.add(Box.createVerticalStrut(6));
         }
         killBtn.setEnabled(!found.isEmpty());
         list.revalidate();

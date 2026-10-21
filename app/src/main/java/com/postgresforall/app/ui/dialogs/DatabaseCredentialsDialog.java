@@ -2,6 +2,7 @@ package com.postgresforall.app.ui.dialogs;
 
 import com.postgresforall.app.ui.Palette;
 import com.postgresforall.app.ui.Ui;
+import com.postgresforall.app.ui.theme.Icons;
 import com.postgresforall.core.model.ConnectionProfile;
 import com.postgresforall.core.model.DatabaseCredential;
 import com.postgresforall.core.model.DiscoveredServer;
@@ -10,6 +11,7 @@ import com.postgresforall.core.model.ServerKey;
 import com.postgresforall.core.platform.Platform;
 import com.postgresforall.core.service.ConnectionErrors;
 import com.postgresforall.core.service.ConnectionManager;
+import net.miginfocom.swing.MigLayout;
 
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -21,11 +23,7 @@ import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-import java.awt.BorderLayout;
 import java.awt.Component;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
-import java.awt.Insets;
 
 /**
  * Two modes, both verified with a throwaway connection before returning:
@@ -47,6 +45,7 @@ public final class DatabaseCredentialsDialog extends BaseDialog {
     private final JComboBox<PgSslMode> sslBox = new JComboBox<>(PgSslMode.values());
     private final JCheckBox rememberBox = new JCheckBox(rememberLabel());
     private final JTextArea status = wrappingText("", 40);
+    private final JLabel statusIcon = new JLabel();
     private final JButton testBtn;
     private final JButton saveBtn;
     private boolean busy;
@@ -78,13 +77,13 @@ public final class DatabaseCredentialsDialog extends BaseDialog {
         pwBox.setText(existing != null ? existing.password : "");
         sslBox.setSelectedItem(existing != null ? existing.sslMode : PgSslMode.PREFER);
 
-        build("Credentials for '" + database + "'",
+        build(Icons.tinted("database", 24, Palette::accent), "Credentials for '" + database + "'",
                 wrappingText("This database is on " + host + ":" + port + " but is owned by a different role than "
                         + "your login. Enter credentials with access to it — they'll be used for query "
                         + "tabs targeting this database only.", 48),
                 form());
+        saveBtn = addPrimaryButton("Save", this::onSave);
         testBtn = addButton("Test", this::onTest);
-        saveBtn = addButton("Save", this::onSave);
         addButton("Cancel", this::cancel);
         finish();
     }
@@ -111,47 +110,39 @@ public final class DatabaseCredentialsDialog extends BaseDialog {
         pwBox.setText(suggested.password);
         sslBox.setSelectedItem(suggested.sslMode);
 
-        build("Connect to " + server.address(),
+        build(Icons.tinted("server", 24, Palette::accent), "Connect to " + server.address(),
                 wrappingText((server.label() == null ? "" : server.label() + ". ")
                         + "Log in to this server to browse and query it. A superuser (e.g. 'postgres') "
                         + "sees every database on the server.", 48),
                 form());
+        saveBtn = addPrimaryButton("Connect", this::onSave);
         testBtn = addButton("Test", this::onTest);
-        saveBtn = addButton("Connect", this::onSave);
         addButton("Cancel", this::cancel);
         if (lastError != null && !lastError.isBlank()) setStatus(lastError, true);
         finish();
     }
 
     private JPanel form() {
-        var p = new JPanel(new GridBagLayout());
-        var c = new GridBagConstraints();
-        c.insets = new Insets(4, 0, 4, 8);
-        c.anchor = GridBagConstraints.WEST;
-        String[] labels = {"Database:", "Username:", "Password:", "SSL Mode:"};
+        var p = new JPanel(new MigLayout("insets 0, wrap 2, fillx, gapy 8", "[right]12[grow,fill]"));
+        String[] labels = {"Database", "Username", "Password", "SSL mode"};
         Component[] fields = {dbBox, userBox, pwBox, sslBox};
         for (var i = 0; i < labels.length; i++) {
-            c.gridx = 0;
-            c.gridy = i;
-            c.fill = GridBagConstraints.NONE;
-            c.weightx = 0;
-            p.add(new JLabel(labels[i]), c);
-            c.gridx = 1;
-            c.fill = GridBagConstraints.HORIZONTAL;
-            c.weightx = 1;
-            p.add(fields[i], c);
+            var l = new JLabel(labels[i]);
+            l.putClientProperty("FlatLaf.styleClass", "muted");
+            p.add(l);
+            p.add(fields[i]);
         }
-        c.gridx = 1;
-        c.gridy = labels.length;
-        p.add(rememberBox, c);
-        var wrap = new JPanel(new BorderLayout(0, 8));
-        wrap.add(p, BorderLayout.CENTER);
-        wrap.add(status, BorderLayout.SOUTH);
-        return wrap;
+        pwBox.putClientProperty("JPasswordField.showRevealButton", true);
+        p.add(rememberBox, "skip, gaptop 4");
+        statusIcon.setVisible(false);
+        var statusRow = new JPanel(new MigLayout("insets 0, fillx", "[]6[grow,fill]"));
+        statusRow.add(statusIcon, "top");
+        statusRow.add(status);
+        p.add(statusRow, "span 2, gaptop 6");
+        return p;
     }
 
     private void finish() {
-        getRootPane().setDefaultButton(saveBtn);
         DocumentListener dl = new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e) { updateButtons(); }
             @Override public void removeUpdate(DocumentEvent e) { updateButtons(); }
@@ -265,6 +256,9 @@ public final class DatabaseCredentialsDialog extends BaseDialog {
     private void setStatus(String text, boolean error) {
         status.setText(text);
         status.setForeground(error ? Palette.danger() : Palette.muted());
+        statusIcon.setIcon(error ? Icons.tinted("circle-x", Icons.NORMAL, Palette::danger)
+                : Icons.tinted("info", Icons.NORMAL, Palette::muted));
+        statusIcon.setVisible(!text.isEmpty());
         pack();
     }
 }

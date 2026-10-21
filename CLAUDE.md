@@ -19,6 +19,7 @@ Leave the original C# app untouched.
 ./gradlew :app:run                   # launch the GUI
 ./gradlew :app:run --args="--check"  # console health check (exit codes 0, 2-7)
 ./gradlew :app:jpackageImage         # self-contained app for this OS → app/build/jpackage/
+java -Dpfa.theme=dark -cp "app/build/install/PostgresForAll/lib/*" tools/e2e/E2E.java shots   # GUI E2E (after installDist)
 ```
 
 Java 21 (Gradle toolchain); Gradle 8.14 via the wrapper — no global Gradle needed.
@@ -54,6 +55,17 @@ Java 21 (Gradle toolchain); Gradle 8.14 via the wrapper — no global Gradle nee
   SslMode as an int). On Windows passwords are DPAPI with the original entropy strings, so
   both apps read each other's saved logins; on macOS they go to the login Keychain
   (`KeyringSecretStore`) and the file holds `keychain:<id>`.
+- **Theme / look:**
+  - `ui/theme/Theme` handles light, dark and follow-system; switch with `Theme.setMode`.
+  - Colours come only from `Palette.*`, whose PFA.* keys live in
+    `app/src/main/resources/com/postgresforall/app/themes/*.properties` (shared look in
+    `FlatLaf.properties`).
+  - For static text colours, use FlatLaf style classes:
+    `putClientProperty("FlatLaf.styleClass", "muted")`.
+  - Icons are Lucide SVGs in `app/src/main/resources/icons`, loaded through
+    `Icons.get` / `Icons.tinted`.
+  - Fonts: `Fonts.mono` / `Fonts.ui` (Inter, JetBrains Mono).
+  - `ThemeTest` fails on any hard-coded colour and checks WCAG AA contrast in all four themes.
 - Docker is optional everywhere; host steps in `ConnectionProbe` are informational while
   the port answers.
 - `pg_dump` 17+ archives set `transaction_timeout`; `DatabaseOperations.isBenignRestoreError`

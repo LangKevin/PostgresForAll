@@ -2,6 +2,8 @@ package com.postgresforall.app.ui.diag;
 
 import com.postgresforall.app.ui.Palette;
 import com.postgresforall.app.ui.Ui;
+import com.postgresforall.app.ui.theme.Fonts;
+import com.postgresforall.app.ui.theme.Icons;
 import com.postgresforall.core.model.ConnectionProfile;
 import com.postgresforall.core.model.Diagnostics.ContainerState;
 import com.postgresforall.core.model.Diagnostics.ProbeStatus;
@@ -79,9 +81,10 @@ public final class DiagnosticsPanel extends JPanel {
     // Widgets
     private final JCheckBox autoRefreshBox = new JCheckBox("Auto-refresh 10s");
     private final JButton refreshBtn = new JButton("Refresh");
-    private final JPanel banner = new JPanel(new BorderLayout(8, 0));
+    private final RoundedPanel banner = new RoundedPanel(new BorderLayout(10, 0));
+    private final JLabel bannerIcon = new JLabel();
     private final JTextArea bannerText = text("");
-    private final JPanel stepsPanel = new JPanel(new GridBagLayout());
+    private final JPanel stepsPanel = new JPanel();
     private final JLabel detailLine = new JLabel();
     private final JLabel hostActionsTitle = new JLabel("Server Actions");
     private final JButton startBtn = new JButton("Start");
@@ -89,7 +92,7 @@ public final class DiagnosticsPanel extends JPanel {
     private final JButton restartBtn = new JButton("Restart");
     private final JButton logsBtn = new JButton("View logs");
     private final JPanel logsArea = new JPanel();
-    private final JPanel bootBanner = new JPanel(new BorderLayout());
+    private final RoundedPanel bootBanner = new RoundedPanel(new BorderLayout(10, 0));
     private final JLabel bootBannerText = new JLabel();
     private final JPanel issuesBox = new JPanel();
     private final JTextArea rawLogs = new JTextArea();
@@ -141,7 +144,7 @@ public final class DiagnosticsPanel extends JPanel {
                     host = h;
                     applyHostTitle();
                     clearSteps();
-                    setBanner(null, null);
+                    setBanner(null, BannerKind.INFO);
                 });
                 var snap = new ConnectionProbe(h).run(profile, true, ct);
                 if (ct.isCancelled()) return;
@@ -161,14 +164,16 @@ public final class DiagnosticsPanel extends JPanel {
         top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
 
         var header = new JPanel(new BorderLayout());
-        var title = new JLabel("Postgres Health");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 4f));
+        var title = new JLabel("Postgres Health", Icons.get("activity", Icons.LARGE), JLabel.LEADING);
+        title.setIconTextGap(8);
+        title.putClientProperty("FlatLaf.styleClass", "h2");
         header.add(title, BorderLayout.WEST);
         var right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         right.add(autoRefreshBox);
+        refreshBtn.setIcon(Icons.get("refresh-cw"));
         refreshBtn.addActionListener(e -> refresh());
         right.add(refreshBtn);
-        var help = new JButton("?");
+        var help = new JButton();
         help.setToolTipText("Show troubleshooting help for all diagnostics.");
         help.putClientProperty("JButton.buttonType", "help");
         help.addActionListener(e -> HelpDialog.show(this, HelpTopic.GENERAL));
@@ -176,11 +181,14 @@ public final class DiagnosticsPanel extends JPanel {
         header.add(right, BorderLayout.EAST);
         header.setAlignmentX(LEFT_ALIGNMENT);
         top.add(header);
-        top.add(Box.createVerticalStrut(10));
+        top.add(Box.createVerticalStrut(12));
 
-        banner.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
+        banner.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 8));
+        bannerIcon.setVerticalAlignment(JLabel.TOP);
+        banner.add(bannerIcon, BorderLayout.WEST);
         banner.add(bannerText, BorderLayout.CENTER);
-        var bannerHelp = new JButton("?");
+        var bannerHelp = new JButton();
+        bannerHelp.putClientProperty("JButton.buttonType", "help");
         bannerHelp.setToolTipText("What does this mean and how do I fix it?");
         bannerHelp.addActionListener(e -> HelpDialog.show(this, inferHelpTopic()));
         var bh = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
@@ -198,10 +206,11 @@ public final class DiagnosticsPanel extends JPanel {
         // expanding the logs can never push the header or footer off screen.
         var holder = new WidthTrackingPanel(new BorderLayout());
         var steps = new JPanel(new BorderLayout());
+        stepsPanel.setLayout(new BoxLayout(stepsPanel, BoxLayout.Y_AXIS));
         steps.add(stepsPanel, BorderLayout.NORTH);
-        detailLine.setForeground(Palette.subtle());
+        detailLine.putClientProperty("FlatLaf.styleClass", "subtle");
         detailLine.setFont(detailLine.getFont().deriveFont(Font.ITALIC));
-        detailLine.setBorder(BorderFactory.createEmptyBorder(4, 24, 0, 0));
+        detailLine.setBorder(BorderFactory.createEmptyBorder(6, 12, 0, 0));
         steps.add(detailLine, BorderLayout.CENTER);
         var inner = new JPanel(new BorderLayout());
         inner.add(steps, BorderLayout.NORTH);
@@ -218,11 +227,9 @@ public final class DiagnosticsPanel extends JPanel {
         logsArea.setAlignmentX(LEFT_ALIGNMENT);
         logsArea.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
 
-        bootBanner.setBackground(Palette.bannerSuccess());
-        bootBanner.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(Palette.bannerSuccessBorder()),
-                BorderFactory.createEmptyBorder(6, 10, 6, 10)));
-        bootBannerText.setForeground(Palette.success());
+        bootBanner.fill(Palette::bannerSuccess).outline(Palette::bannerSuccessBorder);
+        bootBanner.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+        bootBanner.add(new JLabel(Icons.tinted("circle-check", Icons.NORMAL, Palette::success)), BorderLayout.WEST);
         bootBanner.add(bootBannerText, BorderLayout.CENTER);
         bootBanner.setAlignmentX(LEFT_ALIGNMENT);
         bootBanner.setVisible(false);
@@ -235,8 +242,8 @@ public final class DiagnosticsPanel extends JPanel {
         logsArea.add(issuesBox);
 
         rawLogs.setEditable(false);
-        rawLogs.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-        rawLogs.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        rawLogs.setFont(Fonts.mono(-2));
+        rawLogs.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
         var logScroll = new JScrollPane(rawLogs);
         logScroll.setPreferredSize(new Dimension(400, 180));
         logScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 180));
@@ -268,14 +275,18 @@ public final class DiagnosticsPanel extends JPanel {
         actions.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(1, 0, 0, 0, UIManager.getColor("Separator.foreground")),
                 BorderFactory.createEmptyBorder(10, 0, 0, 0)));
-        hostActionsTitle.setFont(hostActionsTitle.getFont().deriveFont(Font.BOLD));
+        hostActionsTitle.putClientProperty("FlatLaf.styleClass", "sectionTitle");
         hostActionsTitle.setAlignmentX(LEFT_ALIGNMENT);
         actions.add(hostActionsTitle);
         actions.add(Box.createVerticalStrut(6));
         var row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         row.setAlignmentX(LEFT_ALIGNMENT);
+        startBtn.setIcon(Icons.tinted("play", Icons.NORMAL, Palette::success));
+        stopBtn.setIcon(Icons.tinted("square", Icons.NORMAL, Palette::danger));
+        restartBtn.setIcon(Icons.get("refresh-cw"));
+        logsBtn.setIcon(Icons.get("file-text"));
         for (var b : List.of(startBtn, stopBtn, restartBtn, logsBtn)) {
-            b.setPreferredSize(new Dimension(Math.max(90, b.getPreferredSize().width), b.getPreferredSize().height));
+            b.setIconTextGap(6);
             row.add(b);
         }
         startBtn.addActionListener(e -> start());
@@ -291,8 +302,10 @@ public final class DiagnosticsPanel extends JPanel {
         var footer = new JPanel();
         footer.setLayout(new BoxLayout(footer, BoxLayout.Y_AXIS));
         footer.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
-        statusLine.setFont(statusLine.getFont().deriveFont(Font.BOLD));
+        statusLine.putClientProperty("FlatLaf.styleClass", "sectionTitle");
+        lastChecked.putClientProperty("FlatLaf.styleClass", "small muted");
         footer.add(statusLine);
+        footer.add(Box.createVerticalStrut(2));
         footer.add(lastChecked);
         footer.setAlignmentX(LEFT_ALIGNMENT);
         bottom.add(footer);
@@ -340,42 +353,12 @@ public final class DiagnosticsPanel extends JPanel {
 
     private void render(Snapshot snap) {
         clearSteps();
-        var c = new GridBagConstraints();
-        c.gridy = 0;
-        c.insets = new Insets(3, 0, 3, 8);
-        c.anchor = GridBagConstraints.WEST;
         for (var s : snap.steps()) {
             lastSteps.add(s);
-            var glyph = new JLabel("●");
-            glyph.setForeground(colorFor(s.status()));
-            glyph.setFont(glyph.getFont().deriveFont(14f));
-            var name = new JLabel(s.name());
-            name.setPreferredSize(new Dimension(220, name.getPreferredSize().height));
-            var msg = new JLabel(s.message() == null ? "" : s.message());
-            msg.setForeground(Palette.muted());
-            msg.setToolTipText(s.message());
-            var elapsed = new JLabel(s.elapsedMs() > 0 ? String.format("%,.0f ms", s.elapsedMs()) : "");
-            elapsed.setForeground(Palette.subtle());
-
-            c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
-            stepsPanel.add(glyph, c);
-            c.gridx = 1;
-            stepsPanel.add(name, c);
-            c.gridx = 2; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
-            stepsPanel.add(msg, c);
-            c.gridx = 3; c.weightx = 0; c.fill = GridBagConstraints.NONE;
-            stepsPanel.add(elapsed, c);
-            var fix = fixFor(s, snap);
-            c.gridx = 4;
-            if (fix != null) {
-                var b = new JButton(fix.label());
-                b.setToolTipText("Apply the most likely fix for this issue.");
-                b.addActionListener(e -> fix.action().run());
-                stepsPanel.add(b, c);
-            } else {
-                stepsPanel.add(Box.createHorizontalStrut(1), c);
-            }
-            c.gridy++;
+            var card = stepCard(s, fixFor(s, snap));
+            card.setAlignmentX(LEFT_ALIGNMENT);
+            stepsPanel.add(card);
+            stepsPanel.add(Box.createVerticalStrut(6));
         }
         stepsPanel.revalidate();
         stepsPanel.repaint();
@@ -388,17 +371,68 @@ public final class DiagnosticsPanel extends JPanel {
         detailLine.setText(detail == null ? "" : detail);
         detailLine.setVisible(detail != null && !detail.isBlank());
         statusLine.setText(snap.allOk() ? "All green." : "Some checks failed — see steps above.");
+        statusLine.setIcon(snap.allOk()
+                ? Icons.tinted("circle-check", Icons.NORMAL, Palette::success)
+                : Icons.tinted("triangle-alert", Icons.NORMAL, Palette::warning));
     }
 
-    private static Color colorFor(ProbeStatus s) {
+    /** One probe step as a card: status icon, name, message, timing, fix button. */
+    private JComponent stepCard(ProbeStep s, Fix fix) {
+        var failed = s.status() == ProbeStatus.FAILED;
+        var card = new RoundedPanel(new GridBagLayout())
+                .fill(failed ? Palette::bannerError : RoundedPanel::panelBackground)
+                .outline(failed ? Palette::danger : Palette::border);
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        var c = new GridBagConstraints();
+        c.gridy = 0;
+        c.insets = new Insets(0, 0, 0, 10);
+        c.anchor = GridBagConstraints.WEST;
+
+        var icon = new JLabel(statusIcon(s.status()));
+        icon.setToolTipText(s.status().name().toLowerCase(Locale.ROOT));
+        var name = new JLabel(s.name());
+        name.putClientProperty("FlatLaf.styleClass", "semibold");
+        name.setPreferredSize(new Dimension(230, name.getPreferredSize().height));
+        var msg = new JLabel(s.message() == null ? "" : s.message());
+        msg.putClientProperty("FlatLaf.styleClass", failed ? "danger" : "muted");
+        msg.setToolTipText(s.message());
+        var elapsed = new JLabel(s.elapsedMs() > 0 ? String.format("%,.0f ms", s.elapsedMs()) : "");
+        elapsed.putClientProperty("FlatLaf.styleClass", "small subtle");
+
+        c.gridx = 0;
+        card.add(icon, c);
+        c.gridx = 1;
+        card.add(name, c);
+        c.gridx = 2;
+        c.weightx = 1;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        card.add(msg, c);
+        c.gridx = 3;
+        c.weightx = 0;
+        c.fill = GridBagConstraints.NONE;
+        card.add(elapsed, c);
+        if (fix != null) {
+            var b = new JButton(fix.label(), Icons.get("wrench", Icons.SMALL));
+            b.putClientProperty("JComponent.sizeVariant", "small");
+            b.setToolTipText("Apply the most likely fix for this issue.");
+            b.addActionListener(e -> fix.action().run());
+            c.gridx = 4;
+            c.insets = new Insets(0, 0, 0, 0);
+            card.add(b, c);
+        }
+        return card;
+    }
+
+    private static javax.swing.Icon statusIcon(ProbeStatus s) {
         return switch (s) {
-            case OK -> Palette.success();
-            case FAILED -> Palette.danger();
-            case SKIPPED -> Palette.subtle();
-            case RUNNING -> Palette.caution();
-            default -> Palette.disabled();
+            case OK -> Icons.tinted("circle-check", Icons.NORMAL, Palette::success);
+            case FAILED -> Icons.tinted("circle-x", Icons.NORMAL, Palette::danger);
+            case SKIPPED -> Icons.tinted("circle-minus", Icons.NORMAL, Palette::subtle);
+            default -> Icons.tinted("loader", Icons.NORMAL, Palette::subtle);
         };
     }
+
+
 
     private record Fix(String label, Runnable action) { }
 
@@ -447,13 +481,28 @@ public final class DiagnosticsPanel extends JPanel {
         logsBtn.setEnabled(true);
     }
 
-    private void setBanner(String text, Color background) {
+    private enum BannerKind { INFO, WARNING, ERROR }
+
+    private void setBanner(String text, BannerKind kind) {
         if (text == null) {
             banner.setVisible(false);
         } else {
             bannerText.setText(text);
-            banner.setBackground(background);
-            bannerText.setForeground(javax.swing.UIManager.getColor("Label.foreground"));
+            bannerText.setForeground(UIManager.getColor("Label.foreground"));
+            switch (kind) {
+                case INFO -> {
+                    banner.fill(Palette::bannerInfo).outline(Palette::bannerInfoBorder);
+                    bannerIcon.setIcon(Icons.tinted("info", Icons.NORMAL, Palette::notice));
+                }
+                case WARNING -> {
+                    banner.fill(Palette::bannerWarning).outline(Palette::bannerWarningBorder);
+                    bannerIcon.setIcon(Icons.tinted("triangle-alert", Icons.NORMAL, Palette::warning));
+                }
+                case ERROR -> {
+                    banner.fill(Palette::bannerError).outline(Palette::bannerErrorBorder);
+                    bannerIcon.setIcon(Icons.tinted("circle-x", Icons.NORMAL, Palette::danger));
+                }
+            }
             banner.setVisible(true);
         }
         revalidate();
@@ -465,7 +514,7 @@ public final class DiagnosticsPanel extends JPanel {
         if (host.kind() == Kind.UNMANAGED) {
             if (!tcpOk) {
                 setBanner("Nothing answers on this port, and it's a " + host.description() + " — start the "
-                        + "server yourself, then click Refresh.", Palette.bannerInfo());
+                        + "server yourself, then click Refresh.", BannerKind.INFO);
             }
             return;
         }
@@ -473,7 +522,7 @@ public final class DiagnosticsPanel extends JPanel {
 
         if (host instanceof DockerHost && !snap.dockerAvailable()) {
             setBanner("This server is a Docker container and Docker isn't running. Start Docker, then click Refresh.",
-                    Palette.bannerError());
+                    BannerKind.ERROR);
             return;
         }
         var state = snap.hostStatus() == null ? null : snap.hostStatus().state();
@@ -481,14 +530,14 @@ public final class DiagnosticsPanel extends JPanel {
             setBanner(host instanceof DockerHost
                     ? "Container '" + host.name() + "' doesn't exist. Create it (e.g. 'docker compose up -d'), "
                     + "or point Host/Port at a native PostgreSQL install."
-                    : host.description() + " isn't installed any more.", Palette.bannerWarning());
+                    : host.description() + " isn't installed any more.", BannerKind.WARNING);
             return;
         }
         if (state == RunState.STOPPED) {
             setBanner(host.description() + " is stopped. Use Start below"
                     + (host.needsElevation()
                     ? (Platform.isWindows() ? " (Windows will ask for admin)." : " (macOS will ask for an administrator password).")
-                    : "."), Palette.bannerWarning());
+                    : "."), BannerKind.WARNING);
         }
     }
 
@@ -693,12 +742,12 @@ public final class DiagnosticsPanel extends JPanel {
         if (issues.size() == 1 && issues.get(0).fixAction() == FixAction.HEALTHY_BOOT) {
             var lines = issues.get(0).matchedLines();
             var ts = extractTimestamp(lines.isEmpty() ? "" : lines.get(lines.size() - 1));
-            bootBannerText.setText(ts != null ? "✓ Postgres last booted cleanly at " + ts : "✓ Postgres last booted cleanly");
+            bootBannerText.setText(ts != null ? "Postgres last booted cleanly at " + ts : "Postgres last booted cleanly");
             bootBanner.setVisible(true);
         } else if (!issues.isEmpty()) {
             var fixes = new LogFixActions(this, docker, port, this::reloadLogs);
             var head = new JLabel("Issues found (" + issues.size() + ")");
-            head.setFont(head.getFont().deriveFont(Font.BOLD));
+            head.putClientProperty("FlatLaf.styleClass", "sectionTitle");
             head.setAlignmentX(LEFT_ALIGNMENT);
             issuesBox.add(head);
             issuesBox.add(Box.createVerticalStrut(4));
@@ -708,9 +757,7 @@ public final class DiagnosticsPanel extends JPanel {
                 issuesBox.add(card);
                 issuesBox.add(Box.createVerticalStrut(4));
             }
-            issuesBox.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(Palette.border()),
-                    BorderFactory.createEmptyBorder(6, 6, 6, 6)));
+            issuesBox.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
             issuesBox.setVisible(true);
         }
         logsArea.revalidate();
@@ -719,45 +766,57 @@ public final class DiagnosticsPanel extends JPanel {
     }
 
     private JComponent issueCard(LogIssue issue, LogFixActions.Fix fix) {
-        Color bar;
+        Supplier<Color> bar;
         String sev;
+        String icon;
         switch (issue.severity()) {
-            case CRITICAL -> { bar = Palette.critical(); sev = "CRITICAL"; }
-            case ERROR -> { bar = Palette.danger(); sev = "ERROR"; }
-            case WARNING -> { bar = Palette.caution(); sev = "WARN"; }
-            case UNKNOWN -> { bar = Palette.warning(); sev = "UNKNOWN"; }
-            case INFO -> { bar = Palette.success(); sev = "INFO"; }
-            default -> { bar = Palette.subtle(); sev = ""; }
+            case CRITICAL -> { bar = Palette::critical; sev = "CRITICAL"; icon = "circle-x"; }
+            case ERROR -> { bar = Palette::danger; sev = "ERROR"; icon = "circle-x"; }
+            case WARNING -> { bar = Palette::caution; sev = "WARN"; icon = "triangle-alert"; }
+            case UNKNOWN -> { bar = Palette::warning; sev = "UNKNOWN"; icon = "circle-help"; }
+            case INFO -> { bar = Palette::success; sev = "INFO"; icon = "info"; }
+            default -> { bar = Palette::subtle; sev = ""; icon = "info"; }
         }
-        var card = new JPanel(new BorderLayout(10, 0));
-        card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 3, 0, 0, bar),
-                BorderFactory.createEmptyBorder(6, 10, 6, 6)));
+        var card = new RoundedPanel(new BorderLayout(10, 0))
+                .fill(RoundedPanel::panelBackground).outline(Palette::border).accent(bar);
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
 
         var text = new JPanel();
         text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
         text.setOpaque(false);
-        var title = issue.matchCount() > 1 ? issue.title() + "  × " + issue.matchCount() : issue.title();
-        var head = new JLabel("<html><font color='" + Palette.hex(bar) + "'><b>" + sev + "</b></font>&nbsp;&nbsp;<b>"
-                + Ui.escapeHtml(title) + "</b></html>");
-        head.setAlignmentX(LEFT_ALIGNMENT);
-        text.add(head);
+        var titleText = issue.matchCount() > 1 ? issue.title() + "  × " + issue.matchCount() : issue.title();
+        var headRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        headRow.setOpaque(false);
+        headRow.setAlignmentX(LEFT_ALIGNMENT);
+        var sevLabel = new JLabel(sev, Icons.tinted(icon, Icons.SMALL, bar), JLabel.LEADING);
+        sevLabel.setForeground(bar.get());
+        sevLabel.putClientProperty("FlatLaf.styleClass", "small");
+        sevLabel.setFont(sevLabel.getFont().deriveFont(Font.BOLD));
+        var title = new JLabel(titleText);
+        title.putClientProperty("FlatLaf.styleClass", "semibold");
+        headRow.add(sevLabel);
+        headRow.add(title);
+        text.add(headRow);
+        text.add(Box.createVerticalStrut(2));
         var desc = text(issue.description());
+        desc.putClientProperty("FlatLaf.styleClass", "muted");
         desc.setForeground(Palette.muted());
         desc.setColumns(50);
         desc.setAlignmentX(LEFT_ALIGNMENT);
         text.add(desc);
         var sampleText = issue.matchedLines().isEmpty() ? "" : issue.matchedLines().get(issue.matchedLines().size() - 1);
         var sample = new JLabel(sampleText);
-        sample.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 10));
-        sample.setForeground(Palette.subtle());
+        sample.setFont(Fonts.mono(-2));
+        sample.putClientProperty("FlatLaf.styleClass", "subtle");
         sample.setToolTipText("<html><pre>" + Ui.escapeHtml(String.join("\n", issue.matchedLines())) + "</pre></html>");
         sample.setAlignmentX(LEFT_ALIGNMENT);
+        text.add(Box.createVerticalStrut(4));
         text.add(sample);
         card.add(text, BorderLayout.CENTER);
 
         if (fix != null) {
             var b = new JButton(fix.label());
+            b.putClientProperty("JComponent.sizeVariant", "small");
             b.addActionListener(e -> fix.action().run());
             var holder = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
             holder.setOpaque(false);

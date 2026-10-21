@@ -18,6 +18,8 @@ public final class Palette {
     }
 
     public static Color accent() { return c("PFA.accent", new Color(0x336791)); }
+    /** Fixed Postgres blue for branded surfaces (white text on it in both themes). */
+    public static Color brand() { return c("PFA.brand", new Color(0x336791)); }
     public static Color success() { return c("PFA.success", new Color(0x1E7B34)); }
     public static Color warning() { return c("PFA.warning", new Color(0xA35400)); }
     public static Color danger() { return c("PFA.danger", new Color(0xC62828)); }

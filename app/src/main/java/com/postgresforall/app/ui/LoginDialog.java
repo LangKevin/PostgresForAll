@@ -1,7 +1,9 @@
 package com.postgresforall.app.ui;
 
+import com.formdev.flatlaf.ui.FlatLineBorder;
 import com.postgresforall.app.ui.diag.DiagnosticsDialog;
 import com.postgresforall.app.ui.diag.DiagnosticsPanel;
+import com.postgresforall.app.ui.theme.Icons;
 import com.postgresforall.core.config.AppConfig;
 import com.postgresforall.core.model.ConnectionProfile;
 import com.postgresforall.core.model.PgSslMode;
@@ -12,8 +14,9 @@ import com.postgresforall.core.service.ConnectionErrors.Kind;
 import com.postgresforall.core.service.ConnectionManager;
 import com.postgresforall.core.service.DatabaseOperations;
 import com.postgresforall.core.service.PasswordStore;
+import net.miginfocom.swing.MigLayout;
 
-import javax.swing.BorderFactory;
+import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -25,53 +28,48 @@ import javax.swing.JPasswordField;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.UIManager;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.BorderLayout;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
-import java.awt.Font;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
+import java.awt.Graphics;
 import java.awt.Insets;
 import java.awt.event.KeyEvent;
 
 /**
- * "Connect to PostgreSQL Server": login form plus a Diagnostics tab. On a
- * successful connect, {@link #connectedManager()} holds the proven login.
+ * "Connect to PostgreSQL Server": a brand pane beside the login form, plus a
+ * Diagnostics tab. On a successful connect, {@link #connectedManager()} holds
+ * the proven login.
  */
 public final class LoginDialog extends JDialog {
     private final PasswordStore store;
-    private final JComboBox<RoleOption> roleBox = new JComboBox<>();
+    private final JToggleButton appUserToggle = new JToggleButton("Application user");
+    private final JToggleButton superuserToggle = new JToggleButton("Superuser");
     private final JTextField hostBox = new JTextField(24);
     private final JTextField portBox = new JTextField(24);
+    private final JLabel portError = new JLabel(" ");
     private final JTextField dbBox = new JTextField(24);
     private final JTextField userBox = new JTextField(24);
     private final JPasswordField pwBox = new JPasswordField(24);
     private final JComboBox<PgSslMode> sslBox = new JComboBox<>(PgSslMode.values());
     private final JCheckBox rememberBox = new JCheckBox(rememberLabel());
     private final JCheckBox discoverBox = new JCheckBox("Also list the other PostgreSQL servers on this machine");
-    private final JTextArea status = new JTextArea(2, 40);
+    private final JLabel statusIcon = new JLabel();
+    private final JTextArea status = new JTextArea(2, 32);
     private final JButton testBtn = new JButton("Test Connection");
     private final JButton connectBtn = new JButton("Connect");
     private final JTabbedPane tabs = new JTabbedPane();
     private final JPanel diagHost = new JPanel(new BorderLayout());
     private DiagnosticsPanel diagPanel;
     private boolean suppressRoleChange;
+    private boolean busy;
     private volatile ConnectionManager connectedManager;
     private boolean accepted;
-
-    /** A "Connect as" preset. Username and database stay editable after picking one. */
-    private record RoleOption(String label, boolean superuser) {
-        @Override
-        public String toString() {
-            return label;
-        }
-    }
-
-    private static final RoleOption APP_USER = new RoleOption("Application user", false);
-    private static final RoleOption SUPERUSER = new RoleOption("Superuser", true);
 
     private static String rememberLabel() {
         return switch (Platform.current()) {
@@ -89,7 +87,10 @@ public final class LoginDialog extends JDialog {
         tabs.addTab("Login", loginTab());
         tabs.addTab("Diagnostics", diagHost);
         tabs.addChangeListener(e -> onTabChanged());
-        setContentPane(tabs);
+        var content = new JPanel(new BorderLayout());
+        content.add(brandPane(), BorderLayout.WEST);
+        content.add(tabs, BorderLayout.CENTER);
+        setContentPane(content);
         getRootPane().setDefaultButton(connectBtn);
         getRootPane().registerKeyboardAction(e -> dispose(), KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
                 JComponent.WHEN_IN_FOCUSED_WINDOW);
@@ -104,60 +105,101 @@ public final class LoginDialog extends JDialog {
         sslBox.setSelectedItem(initial.sslMode);
         rememberBox.setSelected(initial.password != null && !initial.password.isEmpty());
 
-        // The combo reflects whichever profile was restored rather than driving
+        // The toggle reflects whichever profile was restored rather than driving
         // it, so a superuser login stays sticky until you switch back.
         suppressRoleChange = true;
-        roleBox.addItem(APP_USER);
-        roleBox.addItem(SUPERUSER);
-        roleBox.setSelectedItem(isSuperuserName(initial.username) ? SUPERUSER : APP_USER);
+        (isSuperuserName(initial.username) ? superuserToggle : appUserToggle).setSelected(true);
         suppressRoleChange = false;
-        roleBox.addActionListener(e -> onRoleChanged());
+        appUserToggle.addActionListener(e -> onRoleChanged(false));
+        superuserToggle.addActionListener(e -> onRoleChanged(true));
         discoverBox.setSelected(AppConfig.current().discoverServers);
+        validatePort();
 
-        setMinimumSize(new Dimension(520, 520));
+        setMinimumSize(new Dimension(760, 520));
         pack();
         setLocationRelativeTo(null);
     }
 
+    /** Accent-coloured left column: icon, name, tagline. Colours are re-read on paint. */
+    private JComponent brandPane() {
+        var pane = new JPanel(new MigLayout("insets 28 24 20 24, wrap 1, fill", "[grow]", "[]14[]6[]push[]")) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                g.setColor(Palette.brand());
+                g.fillRect(0, 0, getWidth(), getHeight());
+            }
+        };
+        pane.setOpaque(true);
+        pane.setPreferredSize(new Dimension(250, 10));
+        pane.add(new JLabel(Icons.tinted("database", 44, Palette::chipText)));
+        var name = new JLabel("PostgresForAll");
+        name.putClientProperty("FlatLaf.styleClass", "h1");
+        name.setForeground(Palette.chipText());
+        pane.add(name);
+        var tagline = new JTextArea("A fast PostgreSQL client for Windows and macOS");
+        tagline.setEditable(false);
+        tagline.setFocusable(false);
+        tagline.setOpaque(false);
+        tagline.setLineWrap(true);
+        tagline.setWrapStyleWord(true);
+        tagline.setFont(UIManager.getFont("Label.font"));
+        tagline.setForeground(Palette.chipText());
+        tagline.setBorder(null);
+        pane.add(tagline, "growx, wmax 200");
+        var footer = new JLabel("v1.0");
+        footer.putClientProperty("FlatLaf.styleClass", "small");
+        footer.setForeground(Palette.chipText());
+        pane.add(footer);
+        return pane;
+    }
+
     private JComponent loginTab() {
-        var root = new JPanel(new BorderLayout(0, 10));
-        root.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+        var form = new JPanel(new MigLayout("wrap 2, fillx, insets 20 24 16 24, gapy 8", "[right]14[grow,fill]"));
 
-        var title = new JLabel("PostgresForAll");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D() + 7f));
-        root.add(title, BorderLayout.NORTH);
+        appUserToggle.putClientProperty("JButton.buttonType", "toolBarButton");
+        superuserToggle.putClientProperty("JButton.buttonType", "toolBarButton");
+        appUserToggle.setFocusable(false);
+        superuserToggle.setFocusable(false);
+        var group = new ButtonGroup();
+        group.add(appUserToggle);
+        group.add(superuserToggle);
+        var segmented = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+        segmented.setBorder(new FlatLineBorder(new Insets(2, 2, 2, 2), UIManager.getColor("Component.borderColor"), 1, 10));
+        segmented.add(appUserToggle);
+        segmented.add(superuserToggle);
 
-        var form = new JPanel(new GridBagLayout());
-        var c = new GridBagConstraints();
-        c.insets = new Insets(5, 0, 5, 8);
-        c.anchor = GridBagConstraints.WEST;
-        String[] labels = {"Connect as:", "Host:", "Port:", "Database:", "Username:", "Password:", "SSL Mode:"};
-        JComponent[] fields = {roleBox, hostBox, portBox, dbBox, userBox, pwBox, sslBox};
-        for (var i = 0; i < labels.length; i++) {
-            c.gridx = 0;
-            c.gridy = i;
-            c.weightx = 0;
-            c.fill = GridBagConstraints.NONE;
-            form.add(new JLabel(labels[i]), c);
-            c.gridx = 1;
-            c.weightx = 1;
-            c.fill = GridBagConstraints.HORIZONTAL;
-            form.add(fields[i], c);
-        }
-        c.gridx = 1;
-        c.gridy = labels.length;
-        c.insets = new Insets(10, 0, 0, 8);
-        form.add(rememberBox, c);
-        c.gridy++;
-        c.insets = new Insets(4, 0, 0, 8);
+        hostBox.putClientProperty("JTextField.placeholderText", "localhost");
+        portBox.putClientProperty("JTextField.placeholderText", "5432");
+        dbBox.putClientProperty("JTextField.placeholderText", "postgres");
+        userBox.putClientProperty("JTextField.placeholderText", "postgres");
+        pwBox.putClientProperty("JPasswordField.showRevealButton", true);
+        portError.putClientProperty("FlatLaf.styleClass", "danger small");
+        portError.setVisible(false);
+        portBox.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { validatePort(); }
+            @Override public void removeUpdate(DocumentEvent e) { validatePort(); }
+            @Override public void changedUpdate(DocumentEvent e) { validatePort(); }
+        });
+
+        form.add(muted("Connect as"));
+        form.add(segmented, "growx 0");
+        form.add(muted("Host"));
+        form.add(hostBox);
+        form.add(muted("Port"));
+        form.add(portBox);
+        form.add(portError, "skip, gaptop 0, hidemode 3");
+        form.add(muted("Database"));
+        form.add(dbBox);
+        form.add(muted("Username"));
+        form.add(userBox);
+        form.add(muted("Password"));
+        form.add(pwBox);
+        form.add(muted("SSL mode"));
+        form.add(sslBox);
+        form.add(rememberBox, "skip, gaptop 6");
         discoverBox.setToolTipText("Superuser logins only. Each server gets its own entry in Object Explorer.");
-        form.add(discoverBox, c);
-        c.gridy++;
-        c.weighty = 1;
-        form.add(new JPanel(), c);
+        form.add(discoverBox, "skip");
 
-        var center = new JPanel(new BorderLayout(0, 8));
-        center.add(form, BorderLayout.CENTER);
         status.setEditable(false);
         status.setOpaque(false);
         status.setLineWrap(true);
@@ -165,19 +207,60 @@ public final class LoginDialog extends JDialog {
         status.setFocusable(false);
         status.setFont(UIManager.getFont("Label.font"));
         status.setForeground(Palette.muted());
-        center.add(status, BorderLayout.SOUTH);
-        root.add(center, BorderLayout.CENTER);
+        status.setBorder(null);
+        statusIcon.setVisible(false);
+        var statusRow = new JPanel(new MigLayout("insets 0, fillx", "[]6[grow,fill]"));
+        statusRow.add(statusIcon, "top");
+        statusRow.add(status);
+        form.add(statusRow, "span 2, growx, gaptop 8, hmin 36");
 
-        var buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         testBtn.addActionListener(e -> onTest());
         connectBtn.addActionListener(e -> onConnect());
         var cancel = new JButton("Cancel");
         cancel.addActionListener(e -> dispose());
+        var buttons = new JPanel(new MigLayout("insets 0 24 20 24, fillx", "[]push[][]"));
         buttons.add(testBtn);
-        buttons.add(connectBtn);
-        buttons.add(cancel);
+        if (Platform.isMac()) {
+            buttons.add(cancel);
+            buttons.add(connectBtn);
+        } else {
+            buttons.add(connectBtn);
+            buttons.add(cancel);
+        }
+
+        var root = new JPanel(new BorderLayout());
+        root.add(form, BorderLayout.CENTER);
         root.add(buttons, BorderLayout.SOUTH);
         return root;
+    }
+
+    private static JLabel muted(String text) {
+        var l = new JLabel(text);
+        l.putClientProperty("FlatLaf.styleClass", "muted");
+        return l;
+    }
+
+    /** Port must be 1-65535: red outline and a message otherwise, and no connecting. */
+    private boolean validatePort() {
+        var ok = false;
+        try {
+            var p = Integer.parseInt(portBox.getText().trim());
+            ok = p > 0 && p <= 65535;
+        } catch (NumberFormatException ignored) {
+            // not a number
+        }
+        portBox.putClientProperty("JComponent.outline", ok ? null : "error");
+        portError.setText(ok ? " " : "Port must be a number from 1 to 65535.");
+        portError.setForeground(Palette.danger());
+        portError.setVisible(!ok);
+        updateButtons();
+        return ok;
+    }
+
+    private void updateButtons() {
+        var valid = !portError.isVisible();
+        testBtn.setEnabled(!busy && valid);
+        connectBtn.setEnabled(!busy && valid);
     }
 
     /** Shows the dialog; true when a connection was made. Call on the EDT. */
@@ -205,12 +288,12 @@ public final class LoginDialog extends JDialog {
      * switching to Superuser always re-asks; switching back restores the
      * application-user defaults from the config.
      */
-    private void onRoleChanged() {
-        if (suppressRoleChange || !(roleBox.getSelectedItem() instanceof RoleOption role)) return;
+    private void onRoleChanged(boolean superuser) {
+        if (suppressRoleChange) return;
         var cfg = AppConfig.current();
         // A preset is a whole target: also set host / port, so a remembered login
         // for some other server can't send it astray.
-        if (role.superuser()) {
+        if (superuser) {
             hostBox.setText(cfg.effectiveSuperuserHost());
             portBox.setText(String.valueOf(cfg.effectiveSuperuserPort()));
             userBox.setText(cfg.superuserUsername);
@@ -284,7 +367,7 @@ public final class LoginDialog extends JDialog {
         var profile = buildProfile(true);
         if (profile == null) return;
         var remember = rememberBox.isSelected();
-        var superPreset = roleBox.getSelectedItem() == SUPERUSER;
+        var superPreset = superuserToggle.isSelected();
         setBusy(true);
         setStatus("Connecting...", false);
         Ui.bgQuiet(() -> {
@@ -366,14 +449,17 @@ public final class LoginDialog extends JDialog {
         return false;
     }
 
-    private void setBusy(boolean busy) {
-        testBtn.setEnabled(!busy);
-        connectBtn.setEnabled(!busy);
-        setCursor(busy ? Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR) : null);
+    private void setBusy(boolean b) {
+        busy = b;
+        updateButtons();
+        setCursor(b ? Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR) : null);
     }
 
     private void setStatus(String text, boolean error) {
         status.setText(text);
         status.setForeground(error ? Palette.danger() : Palette.muted());
+        statusIcon.setIcon(error ? Icons.tinted("circle-x", Icons.NORMAL, Palette::danger)
+                : Icons.tinted("info", Icons.NORMAL, Palette::muted));
+        statusIcon.setVisible(!text.isEmpty());
     }
 }

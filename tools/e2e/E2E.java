@@ -59,15 +59,17 @@ public class E2E {
 
     static void run() throws Exception {
         var cfg = AppConfig.current();
+        var themeArg = System.getProperty("pfa.theme", "system");
+        System.out.println("theme: " + themeArg);
         System.out.println("config: " + AppConfig.resolvePath() + " → " + cfg.host + ":" + cfg.port + "/" + cfg.database);
         new Thread(() -> com.postgresforall.app.Main.main(new String[0]), "app-main").start();
 
         // ---- Login ---------------------------------------------------------
         Window login = waitWindow(w -> w instanceof JDialog d && d.getTitle().startsWith("Connect to PostgreSQL") && d.isShowing(), 60000);
         edt(() -> {
-            JComboBox<?> role = find(login, JComboBox.class, c -> c.getItemCount() == 2 && "Application user".equals(c.getItemAt(0).toString()));
-            role.setSelectedIndex(1);
-            role.setSelectedIndex(0); // applies the config's app-user preset (host, port, user, password)
+            // Superuser then Application user: applies the config's app-user preset (host, port, user, password).
+            find(login, AbstractButton.class, b -> "Superuser".equals(b.getText())).doClick();
+            find(login, AbstractButton.class, b -> "Application user".equals(b.getText())).doClick();
         });
         Thread.sleep(500);
         shot(login, "01-login");
@@ -77,6 +79,8 @@ public class E2E {
         QueryTab tab = waitFor("first query tab", () -> findOrNull(main, QueryTab.class, t -> true), 60000);
         Thread.sleep(4000);
         shot(main, "02-main");
+        if (themeArg.equals("dark")) check("dark theme active", com.postgresforall.app.ui.theme.Theme.isDark());
+        if (themeArg.equals("light")) check("light theme active", !com.postgresforall.app.ui.theme.Theme.isDark());
 
         // ---- Remembered password went to the OS store ------------------------
         var profiles = AppPaths.dataDir().resolve("profiles.json");
@@ -101,7 +105,7 @@ public class E2E {
                 SELECT * FROM table_that_does_not_exist;
                 """);
         shot(main, "04-messages");
-        var messages = text(find(tab, JTextPane.class, p -> true));
+        var messages = Ui.call(tab::messagesText);
         check("notice captured", messages.contains("hello from a notice"));
         check("warning captured", messages.contains("and a warning"));
         check("error reported with SQLSTATE", messages.contains("[42P01]"));
@@ -129,6 +133,56 @@ public class E2E {
         check("table script ran", scripted.editor().getText().contains("FROM \"public\".\"users\""));
         shot(main, "07-table-script");
 
+        // ---- Explorer filter -------------------------------------------------------
+        edt(() -> find(main, JTextField.class, f -> "Filter loaded objects".equals(
+                f.getClientProperty("JTextField.placeholderText"))).setText("tasks"));
+        Thread.sleep(500);
+        var picked = Ui.call(() -> {
+            var p = tree.getSelectionPath();
+            return p == null ? "" : ((ExplorerNode) p.getLastPathComponent()).name;
+        });
+        check("explorer filter selects the match (got '" + picked + "')", picked.equals("tasks"));
+        shot(main, "08-explorer-filter");
+        edt(() -> find(main, JTextField.class, f -> "Filter loaded objects".equals(
+                f.getClientProperty("JTextField.placeholderText"))).setText(""));
+
+        // ---- Connection pill: switch the scripted tab to 'postgres' and back ----------
+        edt(() -> find(main, JButton.class, b -> b.getText() != null && b.getText().contains("›")).doClick());
+        var item = waitFor("database menu item", () -> Ui.call(() -> {
+            for (var w : Window.getWindows()) {
+                if (!w.isShowing()) continue;
+                var pm = findOrNull(w instanceof RootPaneContainer r ? r.getRootPane() : (Container) w, JPopupMenu.class, x -> x.isShowing());
+                if (pm == null) continue;
+                for (var c : pm.getComponents()) {
+                    if (c instanceof JMenu m && m.getText().startsWith("localhost:" + cfg.port)) {
+                        for (var mc : m.getMenuComponents()) {
+                            if (mc instanceof JMenuItem mi && "postgres".equals(mi.getText())) return mi;
+                        }
+                    }
+                }
+            }
+            return null;
+        }), 20000);
+        shot(main, "09-connection-menu");
+        edt(item::doClick);
+        waitFor("tab switched to postgres", () -> "postgres".equals(scripted.currentDatabase()) ? true : null, 20000);
+        runSql(scripted, "SELECT current_database();");
+        check("pill switched the tab to postgres", scripted.statusText().contains("1 row(s)"));
+        var pillText = Ui.call(() -> find(main, JButton.class, b -> b.getText() != null && b.getText().contains("›")).getText());
+        check("pill shows the new database (" + pillText + ")", pillText.endsWith("postgres"));
+        shot(main, "10-pill-switched");
+
+        // ---- Live theme switch -------------------------------------------------------
+        var wasDark = com.postgresforall.app.ui.theme.Theme.isDark();
+        edt(() -> com.postgresforall.app.ui.theme.Theme.setMode(wasDark
+                ? com.postgresforall.app.ui.theme.Theme.Mode.LIGHT : com.postgresforall.app.ui.theme.Theme.Mode.DARK));
+        Thread.sleep(1500);
+        check("live theme switch flipped the theme", com.postgresforall.app.ui.theme.Theme.isDark() != wasDark);
+        shot(main, "11-live-theme-switch");
+        edt(() -> com.postgresforall.app.ui.theme.Theme.setMode(wasDark
+                ? com.postgresforall.app.ui.theme.Theme.Mode.DARK : com.postgresforall.app.ui.theme.Theme.Mode.LIGHT));
+        Thread.sleep(1200);
+
         // ---- Diagnostics -------------------------------------------------------
         edt(() -> {
             var dot = find(main, JLabel.class, l -> "●".equals(l.getText()));
@@ -138,7 +192,7 @@ public class E2E {
         Window diag = waitWindow(w -> w instanceof JDialog d && d.isShowing() && d.getTitle().toLowerCase().contains("diagnostic"), 20000);
         waitFor("diagnostics finished", () -> Ui.call(() -> findOrNull(diag, JLabel.class, l -> "All green.".equals(l.getText())) != null
                 || findOrNull(diag, JLabel.class, l -> l.getText() != null && l.getText().startsWith("Some checks failed")) != null) ? true : null, 30000);
-        shot(diag, "08-diagnostics");
+        shot(diag, "12-diagnostics");
         var allGreen = Ui.call(() -> findOrNull(diag, JLabel.class, l -> "All green.".equals(l.getText())) != null);
         check("diagnostics all green", allGreen);
         var hostLine = Ui.call(() -> labels(diag));
@@ -146,7 +200,7 @@ public class E2E {
         if (Platform.isMac()) check("diagnostics found the launchd service", hostLine.contains("Service 'homebrew.mxcl.postgresql"));
         edt(() -> find(diag, JButton.class, b -> b.getText().startsWith("View logs")).doClick());
         Thread.sleep(4000);
-        shot(diag, "09-diagnostics-logs");
+        shot(diag, "13-diagnostics-logs");
         edt(diag::dispose);
     }
 
