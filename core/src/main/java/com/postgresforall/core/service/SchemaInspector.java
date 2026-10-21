@@ -32,6 +32,11 @@ public final class SchemaInspector {
         T map(ResultSet r) throws SQLException;
     }
 
+    /**
+     * Databases this login may see: all of them for a superuser; otherwise only
+     * those it holds CONNECT on. (PostgreSQL grants CONNECT to PUBLIC by default,
+     * so to hide a database from ordinary roles, REVOKE CONNECT ... FROM PUBLIC.)
+     */
     public List<DatabaseInfo> getDatabases() throws SQLException {
         var sql = """
                 SELECT d.datname, d.datistemplate,
@@ -39,6 +44,8 @@ public final class SchemaInspector {
                        d.datallowconn
                 FROM pg_database d
                 WHERE NOT d.datistemplate
+                  AND (current_setting('is_superuser') = 'on'
+                       OR has_database_privilege(d.datname, 'CONNECT'))
                 ORDER BY d.datname""";
         return readRowsServerWide(sql, r -> new DatabaseInfo(
                 r.getString(1), r.getBoolean(2), r.getString(3), r.getBoolean(4)));

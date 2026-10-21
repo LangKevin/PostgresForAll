@@ -57,7 +57,7 @@ public final class Main {
         var manager = login.connectedManager();
         var loginProfile = manager.profile().copy();
         // SSMS-style: a superuser login also lists every other Postgres server on
-        // this machine. Configured servers are listed for any login.
+        // this machine. Non-superusers see only the server they signed in to.
         var discover = manager.isSuperuser() && AppConfig.current().discoverServers && login.discoverServersRequested();
         // The login dialog's manager proved the credentials; close it — the
         // login server's session opens its own pools.

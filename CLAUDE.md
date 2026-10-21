@@ -71,6 +71,17 @@ Java 21 (Gradle toolchain); Gradle 8.14 via the wrapper — no global Gradle nee
 - `pg_dump` 17+ archives set `transaction_timeout`; `DatabaseOperations.isBenignRestoreError`
   forgives exactly that on older servers.
 
+## Who sees what
+
+- **Superuser logins:** see every database on the server, plus the other servers
+  (configured and discovered), silently connected with saved logins.
+- **Any other login:** sees only the server it signed in to, and only the databases it
+  has CONNECT on (`SchemaInspector.getDatabases`). File → Connect to Server still works
+  with credentials.
+- **Caveat:** PostgreSQL grants CONNECT to PUBLIC by default. To hide a database from
+  ordinary roles, `REVOKE CONNECT ON DATABASE x FROM PUBLIC`.
+- **Test:** `DatabaseVisibilityTest`.
+
 ## Object Explorer layout
 
 With `CombineServerDatabases: true` (the default) the login server is the only root, and its

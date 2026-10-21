@@ -124,7 +124,8 @@ public final class MainFrame extends JFrame {
     /**
      * @param primary         the login window's server; connected when the window opens
      * @param discoverServers scan this machine for other Postgres servers (superuser
-     *                        logins, when the config allows). Configured servers are always listed.
+     *                        logins, when the config allows). Other servers (configured or found) are only
+     *                        listed for superuser logins.
      */
     public MainFrame(ServerRegistry registry, ServerSession primary, ConnectionProfile primaryLogin,
                      boolean discoverServers, PasswordStore passwordStore) {
@@ -293,6 +294,15 @@ public final class MainFrame extends JFrame {
      * login. Runs after the window is usable. Call off the EDT.
      */
     private void discoverServersNow() {
+        // Only a superuser sees other servers (configured or discovered) and gets
+        // silently connected to them with saved logins. Anyone else sees just the
+        // server they signed in to; File > Connect to Server still works with credentials.
+        var mgr = primary.manager();
+        if (mgr == null || !mgr.isSuperuser()) {
+            setActiveStatus("Signed in as " + (mgr == null ? "a non-superuser" : "'" + mgr.currentUser() + "'")
+                    + " (not a superuser): only this server and the databases you can connect to are shown.");
+            return;
+        }
         if (discoverServers) setActiveStatus("Looking for other PostgreSQL servers on this machine…");
         try {
             var servers = new ServerDiscovery().discover(primaryLogin, discoverServers, CancelToken.NONE);
