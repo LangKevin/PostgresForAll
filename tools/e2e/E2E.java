@@ -65,7 +65,7 @@ public class E2E {
         new Thread(() -> com.postgresforall.app.Main.main(new String[0]), "app-main").start();
 
         // ---- Login ---------------------------------------------------------
-        Window login = waitWindow(w -> w instanceof JDialog d && d.getTitle().startsWith("Connect to PostgreSQL") && d.isShowing(), 60000);
+        Window login = waitWindow(w -> w instanceof JDialog d && String.valueOf(d.getTitle()).startsWith("Connect to PostgreSQL") && d.isShowing(), 60000);
         edt(() -> {
             // Superuser then Application user: applies the config's app-user preset (host, port, user, password).
             find(login, AbstractButton.class, b -> "Superuser".equals(b.getText())).doClick();
@@ -189,7 +189,7 @@ public class E2E {
             var e = new MouseEvent(dot, MouseEvent.MOUSE_CLICKED, System.currentTimeMillis(), 0, 2, 2, 1, false);
             SwingUtilities.invokeLater(() -> { for (var l : dot.getMouseListeners()) l.mouseClicked(e); });
         });
-        Window diag = waitWindow(w -> w instanceof JDialog d && d.isShowing() && d.getTitle().toLowerCase().contains("diagnostic"), 20000);
+        Window diag = waitWindow(w -> w instanceof JDialog d && d.isShowing() && String.valueOf(d.getTitle()).toLowerCase().contains("diagnostic"), 20000);
         waitFor("diagnostics finished", () -> Ui.call(() -> findOrNull(diag, JLabel.class, l -> "All green.".equals(l.getText())) != null
                 || findOrNull(diag, JLabel.class, l -> l.getText() != null && l.getText().startsWith("Some checks failed")) != null) ? true : null, 30000);
         shot(diag, "12-diagnostics");

@@ -79,7 +79,7 @@ public class Demo {
             recorder.start();
             hold(5500);
             new Thread(() -> com.postgresforall.app.Main.main(new String[0]), "app").start();
-            var login = waitWindow(w -> w instanceof JDialog d && d.getTitle().startsWith("Connect to PostgreSQL") && d.isShowing(), 60000);
+            var login = waitWindow(w -> w instanceof JDialog d && String.valueOf(d.getTitle()).startsWith("Connect to PostgreSQL") && d.isShowing(), 60000);
             anchor = login;
             fadeCard(0, 700);
             script(login);
@@ -325,7 +325,7 @@ public class Demo {
             var e = new MouseEvent(dot, MouseEvent.MOUSE_CLICKED, System.currentTimeMillis(), 0, 4, 4, 1, false);
             for (var l : dot.getMouseListeners()) l.mouseClicked(e);
         });
-        var diag = waitWindow(w -> w instanceof JDialog d && d.isShowing() && d.getTitle().toLowerCase().contains("diagnostic"), 20000);
+        var diag = waitWindow(w -> w instanceof JDialog d && d.isShowing() && String.valueOf(d.getTitle()).toLowerCase().contains("diagnostic"), 20000);
         waitFor(() -> Ui.call(() -> findOrNull(diag, JLabel.class, l -> "All green.".equals(l.getText())) != null) ? true : null, 30000);
         hold(4500);
         say("It reads the server log and flags known problems, with a fix for each");

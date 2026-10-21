@@ -1181,8 +1181,8 @@ public final class MainFrame extends JFrame {
 
         if (node.kind == ExplorerNode.Kind.SERVER && node.server != null && node.server.state() == State.CONNECTED) {
             var server = node.server;
-            menu.add(menuItem("New Query", null, () -> Ui.bg(this, () -> newQueryDocument(null, null, server, null))));
             menu.add(newQueryOnSubmenu(server));
+            menu.add(menuItem("New Query", null, () -> Ui.bg(this, () -> newQueryDocument(null, null, server, null))));
             menu.add(menuItem("Refresh", null, () -> Ui.bg(this, () -> refreshTree(server))));
             menu.add(menuItem("Disconnect", null, () -> Ui.bg(this, () -> disconnectServer(server))));
             menu.addSeparator();
