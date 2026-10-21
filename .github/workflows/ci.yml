@@ -14,14 +14,14 @@ jobs:
       POSTGRESCONNECT_CONFIG: ${{ github.workspace }}/ci/ci.config.json
       PFA_MAC_CI: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: PostgreSQL via Homebrew (launchd job on :5444)
         run: bash ci/mac-postgres-setup.sh
@@ -56,7 +56,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-results
           path: |
@@ -67,7 +67,7 @@ jobs:
 
       - name: Upload app
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: PostgresForAll-macos-arm64
           path: PostgresForAll-macos-arm64.zip
@@ -77,14 +77,14 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Build and test (live-DB tests skip - no server on this runner)
         run: ./gradlew build :app:jpackageImage --no-daemon
@@ -93,7 +93,7 @@ jobs:
         shell: bash
         run: app/build/jpackage/PostgresForAll/PostgresForAll-check.exe --port 5999 || test $? -eq 2
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: PostgresForAll-windows-x64
           path: app/build/jpackage/PostgresForAll/
