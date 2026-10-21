@@ -56,7 +56,7 @@ Java 21 (Gradle toolchain); Gradle 8.14 via the wrapper — no global Gradle nee
   both apps read each other's saved logins; on macOS they go to the login Keychain
   (`KeyringSecretStore`) and the file holds `keychain:<id>`.
 - **Theme / look:**
-  - `ui/theme/Theme` handles light, dark and follow-system; switch with `Theme.setMode`.
+  - `ui/theme/Theme` handles light, dark (the default) and follow-system; switch with `Theme.setMode`.
   - Colours come only from `Palette.*`, whose PFA.* keys live in
     `app/src/main/resources/com/postgresforall/app/themes/*.properties` (shared look in
     `FlatLaf.properties`).

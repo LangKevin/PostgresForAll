@@ -14,7 +14,7 @@ import java.nio.file.Path;
 public final class AppSettings {
     public String lastBackupFolder;
     public String lastRestoreFolder;
-    /** Theme mode: "system" (default), "light" or "dark". */
+    /** Theme mode: "dark" (default when unset), "light" or "system". */
     public String appearance;
 
     private static Path filePath() {

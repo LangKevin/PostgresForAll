@@ -43,7 +43,9 @@ public final class Main {
     }
 
     private static void startGui() {
-        Theme.init(Theme.Mode.parse(AppSettings.load().appearance));
+        // Dark by default; View > Appearance switches to light or follow-system (and is remembered).
+        var appearance = AppSettings.load().appearance;
+        Theme.init(appearance == null || appearance.isBlank() ? Theme.Mode.DARK : Theme.Mode.parse(appearance));
 
         var passwords = new PasswordStore();
         var login = new LoginDialog(passwords);

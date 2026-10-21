@@ -5,3 +5,6 @@ build/
 *.iml
 out/
 .DS_Store
+
+# Rendered demo videos (tools/demo/Demo.java)
+demo/
