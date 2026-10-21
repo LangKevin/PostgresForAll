@@ -485,13 +485,7 @@ public final class ObjectExplorer implements AutoCloseable {
         var session = t.session;
         var login = session.login();
         var nodes = new ArrayList<ExplorerNode>();
-        var dbs = t.inspector.getDatabases();
-        // 'postgres' is only the maintenance database; when the server has real
-        // databases it's noise in the tree (still reachable from the Database dropdown).
-        if (AppConfig.current().hideMaintenanceDatabase && dbs.size() > 1) {
-            dbs = dbs.stream().filter(d -> !d.name().equals("postgres")).toList();
-        }
-        for (var d : dbs) {
+        for (var d : visibleInTree(t.inspector.getDatabases())) {
             var current = login != null && d.name().equals(login.database);
             var tag = current ? "  (connected)" : d.allowConnections() ? "" : "  (offline)";
             var node = new ExplorerNode(Kind.DATABASE, d.name() + tag, "owner: " + d.owner(), d, d.name(), session);
@@ -505,6 +499,18 @@ public final class ObjectExplorer implements AutoCloseable {
             nodes.add(node);
         }
         return nodes;
+    }
+
+    /**
+     * The databases the tree shows for a server: 'postgres' is only the
+     * maintenance database, so when the server has real databases it's hidden
+     * (still reachable from the connection menu). Config: HideMaintenanceDatabase.
+     */
+    public static List<DatabaseInfo> visibleInTree(List<DatabaseInfo> dbs) {
+        if (AppConfig.current().hideMaintenanceDatabase && dbs.size() > 1) {
+            return dbs.stream().filter(d -> !d.name().equals("postgres")).toList();
+        }
+        return dbs;
     }
 
     /**

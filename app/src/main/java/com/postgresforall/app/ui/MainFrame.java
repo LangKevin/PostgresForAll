@@ -506,7 +506,8 @@ public final class MainFrame extends JFrame {
         if (!ensureConnected(session)) return null;
         var login = session.login();
         if (login == null) return null;
-        var dbName = target.database() == null || target.database().isBlank() ? login.database : target.database();
+        var dbName = target.database() == null || target.database().isBlank()
+                ? defaultDatabase(session, login) : target.database();
 
         var lease = acquireWithCredentialPrompt(session, dbName);
         if (lease == null) return null;
@@ -526,6 +527,26 @@ public final class MainFrame extends JFrame {
         if (filePath != null) tab.openFile(filePath);
         Ui.edt(() -> tab.editor().requestFocusInWindow());
         return tab;
+    }
+
+    /**
+     * Database for a new tab when only a server was chosen: the login database,
+     * unless the tree hides it (the 'postgres' maintenance database) and the
+     * server shows exactly one database. Then that one, which is what the user
+     * sees under the server. Off the EDT.
+     */
+    private String defaultDatabase(ServerSession session, ConnectionProfile login) {
+        var ex = explorer;
+        var inspector = ex == null ? null : ex.inspectorFor(session);
+        if (inspector == null) return login.database;
+        try {
+            var visible = ObjectExplorer.visibleInTree(inspector.getDatabases()).stream()
+                    .filter(DatabaseInfo::allowConnections).map(DatabaseInfo::name).toList();
+            if (!visible.contains(login.database) && visible.size() == 1) return visible.get(0);
+        } catch (Exception ignored) {
+            // fall back to the login database
+        }
+        return login.database;
     }
 
     private void onTabChanged(QueryTab tab, QueryTab.Change change) {
@@ -1161,6 +1182,7 @@ public final class MainFrame extends JFrame {
         if (node.kind == ExplorerNode.Kind.SERVER && node.server != null && node.server.state() == State.CONNECTED) {
             var server = node.server;
             menu.add(menuItem("New Query", null, () -> Ui.bg(this, () -> newQueryDocument(null, null, server, null))));
+            menu.add(newQueryOnSubmenu(server));
             menu.add(menuItem("Refresh", null, () -> Ui.bg(this, () -> refreshTree(server))));
             menu.add(menuItem("Disconnect", null, () -> Ui.bg(this, () -> disconnectServer(server))));
             menu.addSeparator();
@@ -1246,6 +1268,39 @@ public final class MainFrame extends JFrame {
                 }
             });
         });
+    }
+
+    /** "New Query on database ▸": one entry per database on the server, so the target is explicit. */
+    private JMenu newQueryOnSubmenu(ServerSession session) {
+        var sub = new JMenu("New Query on database");
+        sub.setIcon(Icons.get("database", Icons.SMALL));
+        var loading = new JMenuItem("Loading...");
+        loading.setEnabled(false);
+        sub.add(loading);
+        Ui.bgQuiet(() -> {
+            var ex = explorer;
+            var inspector = ex == null ? null : ex.inspectorFor(session);
+            var dbs = inspector == null ? List.<DatabaseInfo>of() : inspector.getDatabases();
+            Ui.edt(() -> {
+                sub.removeAll();
+                for (var d : dbs) {
+                    var item = menuItem(d.allowConnections() ? d.name() : d.name() + "  (offline)", null,
+                            () -> Ui.bg(this, () -> newQueryDocument(null, null, session, d.name())));
+                    item.setEnabled(d.allowConnections());
+                    sub.add(item);
+                }
+                if (dbs.isEmpty()) {
+                    var none = new JMenuItem("(couldn't list databases)");
+                    none.setEnabled(false);
+                    sub.add(none);
+                }
+                if (sub.isPopupMenuVisible()) {
+                    sub.setPopupMenuVisible(false);
+                    sub.setPopupMenuVisible(true);
+                }
+            });
+        });
+        return sub;
     }
 
     /**
