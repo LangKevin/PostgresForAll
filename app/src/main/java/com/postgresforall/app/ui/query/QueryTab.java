@@ -145,7 +145,7 @@ public final class QueryTab extends JPanel {
         editor.setBracketMatchingEnabled(true);
         editor.setPaintMatchedBracketPair(true);
         editor.setText("-- Welcome to PostgresForAll\n-- F5 (or " + Ui.menuKeyText()
-                + "Enter) runs the buffer, or just the selected text\n\nSELECT version();\n");
+                + "Enter) runs the buffer, or just the selected text\n\n-- SELECT version();\n");
         editor.discardAllEdits();
         var popup = editor.getPopupMenu();
         popup.addSeparator();
