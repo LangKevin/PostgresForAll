@@ -136,6 +136,54 @@ public class E2E {
         // ---- Table structure: add an index through the dialog, then drop it --------
         tableDesign(main, tree, tab);
 
+        // ---- Table menu: Design ▸ submenu and Properties --------------------------------
+        var usersNode = waitFor("users table node", () -> node(tree, n -> n.kind == ExplorerNode.Kind.TABLE && n.name.equals("users")), 15000);
+        contextMenu(tree, usersNode);
+        var topLevel = Ui.call(() -> {
+            var names = new ArrayList<String>();
+            for (var c : findPopup().getComponents()) if (c instanceof JMenuItem m) names.add(m.getText());
+            return names;
+        });
+        check("table menu: Design submenu + Properties, new items not at top level (" + topLevel + ")",
+                topLevel.contains("Design") && topLevel.contains("Properties") && !topLevel.contains("New index…"));
+        clickMenu("Properties");
+        Window props = waitWindow(w -> w instanceof JDialog d && d.isShowing()
+                && String.valueOf(d.getTitle()).startsWith("Table Properties"), 20000);
+        Thread.sleep(400);
+        var ptree = Ui.call(() -> find(props, com.postgresforall.app.ui.PropertyTreeTable.class, t -> true));
+        var before = Ui.call(ptree::visibleRows);
+        check("properties tree drills into Columns → id", Ui.call(() -> ptree.expandRow("Columns") && ptree.expandRow("id")));
+        var after = Ui.call(ptree::visibleRows);
+        check("expanding added detail rows (" + before + " → " + after + ")", after > before + 5);
+        check("properties text has owner and sizes", Ui.call(ptree::asText).contains("Owner: ") && Ui.call(ptree::asText).contains("Total size: "));
+        Thread.sleep(300);
+        shot(props, "18a-table-properties");
+        edt(() -> find(props, JButton.class, b -> "Close".equals(b.getText())).doClick());
+
+        // ---- Relationship diagram for users ------------------------------------------
+        // The schema was refreshed above: find the users node again.
+        var usersNow = waitFor("users table node", () -> node(tree, n -> n.kind == ExplorerNode.Kind.TABLE && n.name.equals("users")), 15000);
+        contextMenu(tree, usersNow);
+        clickMenu("View relationship diagram");
+        var diagram = waitFor("diagram tab", () -> findOrNull(main,
+                com.postgresforall.app.ui.diagram.RelationshipDiagramTab.class, Component::isShowing), 20000);
+        var graph = waitFor("diagram loaded", () -> Ui.call(() -> diagram.canvas().graph()), 30000);
+        check("diagram shows users and linked tables (" + graph.tables().size() + " tables, "
+                + graph.relationships().size() + " FKs)", graph.tables().size() > 1 && !graph.relationships().isEmpty());
+        check("every table has a box", Ui.call(() -> graph.tables().stream().allMatch(t -> diagram.canvas().boxOf(t.ref()) != null)));
+        Thread.sleep(800);
+        shot(main, "18-relationship-diagram");
+        // Re-centre on a smaller table (what a double-click on its box does).
+        edt(() -> diagram.recenter(new com.postgresforall.core.model.TableObjects.TableRef("public", "tasks")));
+        waitFor("re-centred diagram", () -> Ui.call(() -> {
+            var g = diagram.canvas().graph();
+            return g != null && g.focus().name().equals("tasks") ? g : null;
+        }), 30000);
+        check("diagram re-centred on tasks", Ui.call(() -> diagram.title().endsWith("tasks")));
+        Thread.sleep(800);
+        shot(main, "19-relationship-diagram-tasks");
+        edt(() -> ((JTabbedPane) scripted.getParent()).setSelectedComponent(scripted));
+
         // ---- Explorer filter -------------------------------------------------------
         edt(() -> find(main, JTextField.class, f -> "Filter loaded objects".equals(
                 f.getClientProperty("JTextField.placeholderText"))).setText("tasks"));
@@ -280,12 +328,24 @@ public class E2E {
         return null;
     }
 
+    /** Finds an enabled item by text, looking inside submenus (e.g. Design ▸) too. */
+    static JMenuItem menuItemIn(Component[] items, String text) {
+        for (var c : items) {
+            if (c instanceof JMenu sub) {
+                var found = menuItemIn(sub.getMenuComponents(), text);
+                if (found != null) return found;
+            } else if (c instanceof JMenuItem m && text.equals(m.getText()) && m.isEnabled()) {
+                return m;
+            }
+        }
+        return null;
+    }
+
     static void clickMenu(String text) throws Exception {
         var mi = waitFor("menu item '" + text + "'", () -> Ui.call(() -> {
             var pm = findPopup();
             if (pm == null) return null;
-            for (var c : pm.getComponents()) if (c instanceof JMenuItem m && text.equals(m.getText()) && m.isEnabled()) return m;
-            return null;
+            return menuItemIn(pm.getComponents(), text);
         }), 10000);
         edt(() -> {
             mi.doClick();

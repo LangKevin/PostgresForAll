@@ -356,4 +356,50 @@ class TableStructureLiveTest {
             assertThat(new DdlApplier(mgr).apply(none, false, null, null).success()).isTrue();
         });
     }
+
+    @PostgresAvailable
+    void properties_treeDrillsIntoDetails() throws Exception {
+        withDatabase(PREREQUISITES + FIXTURE, (mgr, profile) -> {
+            exec(profile, "ALTER TABLE \"Order Items\" ENABLE ROW LEVEL SECURITY; "
+                    + "CREATE POLICY own_rows ON \"Order Items\" FOR SELECT USING (qty > 0); "
+                    + "ALTER TABLE \"Order Items\" SET (fillfactor = 80); "
+                    + "INSERT INTO customers VALUES (1, 'a@x'); "
+                    + "INSERT INTO \"Order Items\" (\"CustomerId\", qty, price) VALUES (1, 2, 3.50), (1, 4, 1.25); "
+                    + "ANALYZE \"Order Items\";");
+            var groups = new TablePropertiesInspector(mgr).properties("public", T);
+            assertThat(groups).extracting(p -> p.name()).containsExactly(
+                    "General", "Storage", "Structure", "Activity (since statistics reset)", "Your access");
+            var root = new com.postgresforall.core.model.TableObjects.PropertyNode("root", null, null, groups);
+            java.util.function.Function<String, com.postgresforall.core.model.TableObjects.PropertyNode> f = root::find;
+
+            assertThat(f.apply("Name").value()).isEqualTo(T);
+            assertThat(f.apply("Owner").value()).isEqualTo(profile.username);
+            assertThat(f.apply("Owner").find("Can log in").value()).isEqualTo("yes");
+            assertThat(f.apply("Comment").value()).isEqualTo("Line items, it's");
+
+            var columns = f.apply("Columns");
+            assertThat(columns.value()).isEqualTo("11");
+            assertThat(columns.children()).extracting(c -> c.name()).startsWith("id", "CustomerId", "qty");
+            var qty = columns.find("qty");
+            assertThat(qty.find("Default").value()).isEqualTo("1");
+            assertThat(qty.find("Comment").value()).isEqualTo("How many");
+            assertThat(qty.find("Statistics")).isNotNull();
+
+            var structure = f.apply("Structure");
+            assertThat(structure.find("Indexes").children()).hasSize(4);
+            assertThat(structure.find("ix_partial").find("Partial (WHERE)").value()).contains("qty > 1");
+            assertThat(f.apply("fk_customer").find("On delete").value()).isEqualTo("SET NULL");
+            assertThat(f.apply("qty_positive").find("Validated").value()).startsWith("no");
+            assertThat(f.apply("trg_off").find("Enabled").value()).isEqualTo("no");
+            assertThat(f.apply("Referenced by").children()).singleElement()
+                    .satisfies(r -> assertThat(r.name()).isEqualTo("public.refunds"));
+            assertThat(f.apply("Row-level security").value()).startsWith("enabled");
+            assertThat(f.apply("own_rows").find("Command").value()).isEqualTo("SELECT");
+            assertThat(f.apply("Storage options").find("fillfactor").value()).isEqualTo("80");
+            assertThat(f.apply("Total size").find("Indexes").hasChildren()).isTrue();
+            assertThat(f.apply("Your privileges").value()).contains("SELECT", "TRIGGER");
+            assertThat(f.apply("All grants").find(profile.username)).isNotNull();
+            assertThat(f.apply("Last analyze").find("Last manual ANALYZE").value()).isNotEqualTo("never");
+        });
+    }
 }

@@ -100,6 +100,8 @@ group opens expanded. Group nodes are `Kind.SERVER`, so they get the server cont
 ## Table structure editing
 
 - **Right-click menus:** every table and its structure folders (Columns, Keys, Constraints, Indexes, Triggers, Referenced by) have create / edit / rename / drop actions. They're wired in `ui/TableDesignActions`.
+  - **Table menu:** a short top level (Design ▸, Script as SELECT/CREATE, Refresh, Properties). Every structure action, the diagram and dependencies sit under **Design ▸**.
+  - **Properties:** opens `dialogs/TablePropertiesDialog`, an expandable `ui/PropertyTreeTable` (Property | Value) filled with a `PropertyNode` tree from `TablePropertiesInspector`. Rows with more detail carry children: columns, indexes, constraints, triggers, inbound FKs, the owner role, the size breakdown, policies and grants.
 - **Dialogs:** they live in `ui/design`. Each extends `ChangeDialog`, which shows the SQL preview plus the lock each statement takes, and offers Apply / Open in query tab / Cancel. Dialogs only build statements; they never run them.
 - **Core:**
   - `TableInspector` handles catalog reads and `scriptCreate`.
@@ -109,6 +111,11 @@ group opens expanded. Group nodes are `Kind.SERVER`, so they get the server cont
 - **After Apply:** the table node reloads through `ObjectExplorer.refreshTable(node, folderKind)`.
 - **Large tables:** at or above `LargeTableRows` / `LargeTableBytes` in the config, the dialogs default to CONCURRENTLY or NOT VALID.
 - **Tests:** `TableStructureLiveTest` creates and drops its own `pfa_tbl_*` databases. The E2E creates and drops `public.pfa_e2e_design`.
+- **Relationship diagram:** "View relationship diagram" on a table opens a `ui/diagram/RelationshipDiagramTab` document tab.
+  - **Data:** `RelationshipInspector.graph` walks foreign keys both ways for 1–3 hops, capped at 60 tables.
+  - **Layout:** `DiagramLayout` puts referenced tables left and referencing tables right, wrapping a crowded hop past 6 tables per column. It is pure and unit-tested.
+  - **Drawing:** `DiagramCanvas` paints crow's-foot lines and handles drag, pan, zoom and re-centring.
+  - **Tests:** `RelationshipInspectorLiveTest` uses throwaway `pfa_rel_*` databases.
 
 ## Connection defaults
 

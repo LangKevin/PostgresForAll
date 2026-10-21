@@ -65,6 +65,33 @@ public final class TableObjects {
     /** An object that depends on what's about to change (shown before drops / type changes). */
     public record Dependency(String kind, String name, String detail) { }
 
+    /**
+     * One row of the table Properties tree. {@code icon} is a hint for the UI
+     * ("group", "column", "key", "fk", "index", "constraint", "trigger", "role",
+     * "policy", or null); rows with children can be expanded for more detail.
+     */
+    public record PropertyNode(String name, String value, String icon, List<PropertyNode> children) {
+        public PropertyNode(String name, String value) {
+            this(name, value, null, List.of());
+        }
+
+        public boolean hasChildren() {
+            return children != null && !children.isEmpty();
+        }
+
+        /** Depth-first search by name (first match), including this node. */
+        public PropertyNode find(String n) {
+            if (name.equals(n)) return this;
+            if (children != null) {
+                for (var c : children) {
+                    var f = c.find(n);
+                    if (f != null) return f;
+                }
+            }
+            return null;
+        }
+    }
+
     public record TableRef(String schema, String name) {
         @Override
         public String toString() {

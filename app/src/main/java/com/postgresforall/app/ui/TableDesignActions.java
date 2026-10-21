@@ -11,9 +11,11 @@ import com.postgresforall.app.ui.design.KeyDialog;
 import com.postgresforall.app.ui.design.RenameDialog;
 import com.postgresforall.app.ui.design.SqlConfirmDialog;
 import com.postgresforall.app.ui.design.TriggerDialog;
+import com.postgresforall.app.ui.dialogs.TablePropertiesDialog;
 import com.postgresforall.app.ui.explorer.ExplorerNode;
 import com.postgresforall.app.ui.explorer.ExplorerNode.Kind;
 import com.postgresforall.app.ui.explorer.ObjectExplorer;
+import com.postgresforall.app.ui.theme.Icons;
 import com.postgresforall.core.config.AppConfig;
 import com.postgresforall.core.model.DdlStatement;
 import com.postgresforall.core.model.OperationEvent;
@@ -34,9 +36,12 @@ import com.postgresforall.core.service.DdlBuilder;
 import com.postgresforall.core.service.DependencyInspector;
 import com.postgresforall.core.service.ServerSession;
 import com.postgresforall.core.service.TableInspector;
+import com.postgresforall.core.service.TablePropertiesInspector;
 import net.miginfocom.swing.MigLayout;
 
 import javax.swing.JCheckBox;
+import javax.swing.JComponent;
+import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
@@ -65,14 +70,16 @@ final class TableDesignActions {
     private final OperationOutputPanel output;
     private final Runnable showOutput;
     private final QueryOpener openQuery;
+    private final java.util.function.Consumer<ExplorerNode> openDiagram;
 
     TableDesignActions(Component owner, ObjectExplorer explorer, OperationOutputPanel output, Runnable showOutput,
-                       QueryOpener openQuery) {
+                       QueryOpener openQuery, java.util.function.Consumer<ExplorerNode> openDiagram) {
         this.owner = owner;
         this.explorer = explorer;
         this.output = output;
         this.showOutput = showOutput;
         this.openQuery = openQuery;
+        this.openDiagram = openDiagram;
     }
 
     /** True for the node kinds {@link #populate} handles. */
@@ -105,26 +112,32 @@ final class TableDesignActions {
 
         switch (node.kind) {
             case TABLE -> {
-                mutating.add(add(menu, "New column…", "plus", () -> newColumn(node)));
-                mutating.add(add(menu, "New index…", "list-ordered", () -> newIndex(node)));
-                mutating.add(add(menu, "New foreign key…", "link", () -> newForeignKey(node)));
-                mutating.add(add(menu, "New primary key…", "key-round", () -> newKey(node, true)));
-                mutating.add(add(menu, "New unique constraint…", "square-check", () -> newKey(node, false)));
-                mutating.add(add(menu, "New check constraint…", "list-checks", () -> newCheck(node)));
-                mutating.add(add(menu, "New exclusion constraint…", "ban", () -> newExclusion(node)));
-                mutating.add(add(menu, "New trigger…", "zap", () -> newTrigger(node)));
+                // Structure editing lives under Design ▸, keeping the top level short.
+                var design = new JMenu("Design");
+                design.setIcon(Icons.get("wrench", Icons.SMALL));
+                mutating.add(add(design, "New column…", "plus", () -> newColumn(node)));
+                mutating.add(add(design, "New index…", "list-ordered", () -> newIndex(node)));
+                mutating.add(add(design, "New foreign key…", "link", () -> newForeignKey(node)));
+                mutating.add(add(design, "New primary key…", "key-round", () -> newKey(node, true)));
+                mutating.add(add(design, "New unique constraint…", "square-check", () -> newKey(node, false)));
+                mutating.add(add(design, "New check constraint…", "list-checks", () -> newCheck(node)));
+                mutating.add(add(design, "New exclusion constraint…", "ban", () -> newExclusion(node)));
+                mutating.add(add(design, "New trigger…", "zap", () -> newTrigger(node)));
+                design.addSeparator();
+                add(design, "View relationship diagram", "network", () -> openDiagram.accept(tableNode));
+                add(design, "View dependencies…", null, () -> viewDependencies(node));
+                design.addSeparator();
+                mutating.add(add(design, "Rename table…", "pencil", () -> renameTable(node)));
+                var truncate = add(design, "Truncate table…", null, () -> truncateTable(node));
+                truncate.setForeground(Palette.danger());
+                mutating.add(truncate);
+                var drop = add(design, "Drop table…", "trash-2", () -> dropTable(node));
+                drop.setForeground(Palette.danger());
+                mutating.add(drop);
+                menu.add(design);
                 menu.addSeparator();
                 add(menu, "Script as SELECT (LIMIT 1000)", null, scriptSelect);
                 add(menu, "Script as CREATE", null, () -> scriptCreate(node));
-                add(menu, "View dependencies…", null, () -> viewDependencies(node));
-                menu.addSeparator();
-                mutating.add(add(menu, "Rename table…", "pencil", () -> renameTable(node)));
-                var truncate = add(menu, "Truncate table…", null, () -> truncateTable(node));
-                truncate.setForeground(Palette.danger());
-                mutating.add(truncate);
-                var drop = add(menu, "Drop table…", "trash-2", () -> dropTable(node));
-                drop.setForeground(Palette.danger());
-                mutating.add(drop);
             }
             case COLUMNS_FOLDER -> mutating.add(add(menu, "New column…", "plus", () -> newColumn(node)));
             case COLUMN -> {
@@ -137,6 +150,7 @@ final class TableDesignActions {
             case KEYS_FOLDER -> {
                 mutating.add(add(menu, "New primary key…", "key-round", () -> newKey(node, true)));
                 mutating.add(add(menu, "New foreign key…", "link", () -> newForeignKey(node)));
+                add(menu, "View relationship diagram", "network", () -> openDiagram.accept(tableNode));
             }
             case CONSTRAINTS_FOLDER -> {
                 mutating.add(add(menu, "New unique constraint…", "square-check", () -> newKey(node, false)));
@@ -194,9 +208,7 @@ final class TableDesignActions {
                         cascade -> DdlBuilder.dropTrigger(table.schema(), table.name(), tr.name()), Kind.TRIGGERS_FOLDER)));
             }
             case REFERENCED_BY_FOLDER -> {
-                var none = new JMenuItem("Foreign keys in other tables that point here");
-                none.setEnabled(false);
-                menu.add(none);
+                add(menu, "View relationship diagram", "network", () -> openDiagram.accept(tableNode));
             }
             case REFERENCING_FK -> {
                 var r = (ReferencingFk) node.payload;
@@ -214,19 +226,22 @@ final class TableDesignActions {
         } else {
             menu.addSeparator();
             add(menu, "Refresh", "refresh-cw", () -> explorer.refreshNode(node));
+            menu.addSeparator();
+            add(menu, "Properties", "info", () -> showProperties(node));
         }
         disableUnlessAlterable(node, table, mutating);
     }
 
-    private static JMenuItem add(JPopupMenu menu, String text, String icon, Runnable action) {
+    /** Adds an item to a popup menu or a submenu. */
+    private static JMenuItem add(JComponent menu, String text, String icon, Runnable action) {
         var mi = new JMenuItem(text);
-        if (icon != null) mi.setIcon(com.postgresforall.app.ui.theme.Icons.get(icon, com.postgresforall.app.ui.theme.Icons.SMALL));
+        if (icon != null) mi.setIcon(Icons.get(icon, Icons.SMALL));
         mi.addActionListener(e -> action.run());
         menu.add(mi);
         return mi;
     }
 
-    private static JMenuItem dropItem(JPopupMenu menu, String text, Runnable action) {
+    private static JMenuItem dropItem(JComponent menu, String text, Runnable action) {
         var mi = add(menu, text, "trash-2", action);
         mi.setForeground(Palette.danger());
         return mi;
@@ -598,6 +613,13 @@ final class TableDesignActions {
             var deps = new DependencyInspector(c.mgr()).forTable(c.s(), c.t());
             show(c, () -> new DropDialog(owner, "Drop table", "table", c.table().toString(), deps,
                     cascade -> DdlBuilder.dropTable(c.s(), c.t(), cascade)), "Drop table " + c.table(), null);
+        });
+    }
+
+    private void showProperties(ExplorerNode node) {
+        withCtx(node, c -> {
+            var props = new TablePropertiesInspector(c.mgr()).properties(c.s(), c.t());
+            Ui.edt(() -> new TablePropertiesDialog(owner, c.table().toString(), props).showDialog());
         });
     }
 

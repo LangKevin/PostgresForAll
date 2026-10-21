@@ -8,6 +8,7 @@ import com.postgresforall.app.ui.diag.HelpTopic;
 import com.postgresforall.app.ui.dialogs.ConfirmTypeDialog;
 import com.postgresforall.app.ui.dialogs.DatabaseCredentialsDialog;
 import com.postgresforall.app.ui.dialogs.TextInputDialog;
+import com.postgresforall.app.ui.diagram.RelationshipDiagramTab;
 import com.postgresforall.app.ui.explorer.ExplorerNode;
 import com.postgresforall.app.ui.explorer.ObjectExplorer;
 import com.postgresforall.app.ui.query.QueryTab;
@@ -20,6 +21,7 @@ import com.postgresforall.core.model.OperationEvent;
 import com.postgresforall.core.model.OperationEvent.Severity;
 import com.postgresforall.core.model.SchemaNodes.DatabaseInfo;
 import com.postgresforall.core.model.SchemaNodes.TableInfo;
+import com.postgresforall.core.model.TableObjects.TableRef;
 import com.postgresforall.core.model.ServerSource;
 import com.postgresforall.core.platform.AppPaths;
 import com.postgresforall.core.platform.Platform;
@@ -28,6 +30,7 @@ import com.postgresforall.core.service.ConnectionErrors.Kind;
 import com.postgresforall.core.service.ConnectionLease;
 import com.postgresforall.core.service.DatabaseOperations;
 import com.postgresforall.core.service.PasswordStore;
+import com.postgresforall.core.service.RelationshipInspector;
 import com.postgresforall.core.service.ServerDiscovery;
 import com.postgresforall.core.service.ServerRegistry;
 import com.postgresforall.core.service.ServerSession;
@@ -560,7 +563,46 @@ public final class MainFrame extends JFrame {
         return tab.title() + " — " + tab.connectionLabel() + (tab.isDirty() ? " *" : "");
     }
 
+    /** Opens (or switches to) the relationship diagram of a table node, as a document tab. */
+    private void openRelationshipDiagram(ExplorerNode tableNode) {
+        if (!(tableNode.payload instanceof TableInfo t) || tableNode.server == null) return;
+        var server = tableNode.server;
+        var db = tableNode.databaseName;
+        var focus = new TableRef(t.schema(), t.name());
+        for (var i = 0; i < docTabs.getTabCount(); i++) {
+            if (docTabs.getComponentAt(i) instanceof RelationshipDiagramTab d && d.focus().equals(focus)
+                    && java.util.Objects.equals(d.database(), db)) {
+                docTabs.setSelectedIndex(i);
+                return;
+            }
+        }
+        var ex = explorer;
+        var tab = new RelationshipDiagramTab(focus, db,
+                (table, depth) -> {
+                    var mgr = ex.managerFor(server, db);
+                    if (mgr == null) throw new IllegalStateException("Couldn't open database '" + db + "'.");
+                    return new RelationshipInspector(mgr).graph(table.schema(), table.name(), depth,
+                            RelationshipInspector.DEFAULT_MAX_TABLES);
+                },
+                table -> {
+                    if (!ex.revealTable(tableNode, table.schema(), table.name())) {
+                        setActiveStatus("Expand " + db + " in Object Explorer to show " + table + ".");
+                    }
+                });
+        docTabs.addTab(tab.title(), Icons.get("network", Icons.SMALL), tab);
+        tab.onTitleChange(() -> {
+            var i = docTabs.indexOfComponent(tab);
+            if (i >= 0) docTabs.setTitleAt(i, tab.title());
+        });
+        docTabs.setSelectedComponent(tab);
+    }
+
     private void closeTabAt(int index) {
+        if (docTabs.getComponentAt(index) instanceof RelationshipDiagramTab d) {
+            docTabs.remove(d);
+            syncToActiveTab();
+            return;
+        }
         if (!(docTabs.getComponentAt(index) instanceof QueryTab tab)) return;
         if (tab.isDirty() && !Ui.confirm(this, "Close tab",
                 "'" + tab.title() + "' has unsaved changes. Close it anyway?", true)) {
@@ -1240,7 +1282,7 @@ public final class MainFrame extends JFrame {
             disableWithoutClientTools(server, backup, restore);
         } else if (TableDesignActions.handles(node.kind) && node.server != null) {
             new TableDesignActions(this, explorer, output, this::showOutput,
-                    (sql, server, db) -> newQueryDocument(sql, null, server, db))
+                    (sql, server, db) -> newQueryDocument(sql, null, server, db), this::openRelationshipDiagram)
                     .populate(menu, node, () -> scriptTable(false));
         } else {
             var refresh = menuItem("Refresh", null, () -> explorer.refreshNode(node));
