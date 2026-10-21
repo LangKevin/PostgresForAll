@@ -32,6 +32,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MacPlatformIT {
     private static final CancelToken CT = CancelToken.NONE;
 
+    /** Whatever happened above, leave the server running for the rest of the suite. */
+    @org.junit.jupiter.api.AfterAll
+    static void ensureRunning() {
+        if (PostgresHandshake.tryProbeTcp("localhost", port(), Duration.ofMillis(500))) return;
+        ServerHosts.forProfile(TestProfiles.owner(), CT).start(CT);
+        ServerHosts.waitForPort("localhost", port(), Duration.ofSeconds(60), CT);
+    }
+
     private static int port() {
         return AppConfig.current().port;
     }
@@ -68,6 +76,12 @@ class MacPlatformIT {
         assertThat(stop.exitCode()).as(stop.stdErr()).isZero();
         assertThat(waitClosed("localhost", port(), Duration.ofSeconds(30))).isTrue();
         assertThat(host.status(CT).state()).isEqualTo(ServerHost.RunState.STOPPED);
+        // brew removed the plist; discovery must still list the stopped server.
+        assertThat(new MacPostgresServices(null).list(CT)).anySatisfy(s -> {
+            assertThat(s.name()).isEqualTo(host.name());
+            assertThat(s.port()).isEqualTo(port());
+            assertThat(s.isRunning()).isFalse();
+        });
 
         var start = host.start(CT);
         assertThat(start.exitCode()).as(start.stdErr()).isZero();

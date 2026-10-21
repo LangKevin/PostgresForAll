@@ -31,6 +31,8 @@ import java.util.stream.Stream;
 public final class MacPostgresServices implements LocalServiceSource {
     /** Name prefix for Postgres.app entries, which have no launchd label. */
     public static final String POSTGRES_APP_PREFIX = "postgresapp:";
+    /** launchd label prefix of `brew services` jobs. */
+    public static final String HOMEBREW_PREFIX = "homebrew.mxcl.";
 
     private final ProcessRunner runner;
 
@@ -42,12 +44,12 @@ public final class MacPostgresServices implements LocalServiceSource {
     public record LaunchdJob(String label, Path plist, Domain domain, List<String> programArguments,
                              String dataDirectory) {
         public boolean isHomebrew() {
-            return label.startsWith("homebrew.mxcl.");
+            return label.startsWith(HOMEBREW_PREFIX);
         }
 
         /** "postgresql@16" for a Homebrew label, else null. */
         public String homebrewFormula() {
-            return isHomebrew() ? label.substring("homebrew.mxcl.".length()) : null;
+            return isHomebrew() ? label.substring(HOMEBREW_PREFIX.length()) : null;
         }
     }
 
@@ -74,11 +76,49 @@ public final class MacPostgresServices implements LocalServiceSource {
                         : systemJobRunning(runner, job.label(), ct);
                 found.add(new LocalPgService(job.label(), displayName(job), job.dataDirectory(), port, running));
             }
+            // `brew services stop` deletes the plist, so a stopped Homebrew server
+            // only shows up in brew's own list. Its data folder is var/<formula>.
+            var brewList = brewServices(runner, ct);
+            if (!brewList.isEmpty()) {
+                var prefix = runner.run("brew", List.of("--prefix"), Duration.ofSeconds(20), ct);
+                for (var b : brewList) {
+                    var label = HOMEBREW_PREFIX + b.name();
+                    if (found.stream().anyMatch(s -> s.name().equals(label))) continue;
+                    var dataDir = prefix.exitCode() == 0
+                            ? Path.of(prefix.stdOut().trim(), "var", b.name()).toString() : null;
+                    found.add(new LocalPgService(label, "Homebrew " + b.name(), dataDir,
+                            LocalServiceSource.readPort(dataDir), b.running()));
+                }
+            }
             found.addAll(postgresAppServers());
         } catch (RuntimeException ex) {
             // best-effort, like every discovery source
         }
         return found;
+    }
+
+    /** One Homebrew PostgreSQL formula as `brew services list` reports it. */
+    public record BrewService(String name, boolean running) { }
+
+    /** PostgreSQL formulae known to `brew services` (started or not); empty without Homebrew. */
+    public static List<BrewService> brewServices(ProcessRunner runner, CancelToken ct) {
+        var r = runner.run("brew", List.of("services", "list", "--json"), Duration.ofSeconds(30), ct);
+        return r.exitCode() == 0 ? parseBrewServicesJson(r.stdOut()) : List.of();
+    }
+
+    /** Parses {@code brew services list --json}, keeping postgresql* formulae. */
+    public static List<BrewService> parseBrewServicesJson(String json) {
+        var list = new ArrayList<BrewService>();
+        try {
+            for (var n : com.postgresforall.core.util.Json.PLAIN.readTree(json)) {
+                var name = n.path("name").asText("");
+                if (!name.startsWith("postgresql")) continue;
+                list.add(new BrewService(name, "started".equals(n.path("status").asText(""))));
+            }
+        } catch (Exception ignored) {
+            // unexpected output: nothing listed
+        }
+        return list;
     }
 
     /** Every launchd job definition that runs PostgreSQL. */

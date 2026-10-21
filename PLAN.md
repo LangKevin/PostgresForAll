@@ -38,8 +38,10 @@ logins carry over.
   port owners, and Docker Desktop launch. None of this could run on this Windows machine;
   only the plist and `lsof` parsing is covered by tests.
 - **Decide distribution format:** installer (WiX `.msi` / `.dmg`) or portable zip.
-- **CI:** a Windows and macOS build matrix, plus a Postgres service container so the live
-  tests run there.
+- **CI:** set up 2026-10-21. GitHub Actions runs a macOS job (Homebrew Postgres as a
+  launchd job, full tests incl. the Mac-only `MacPlatformIT`, the packaged `.app`, and the
+  GUI end-to-end test) and a Windows job (build plus exe). Repo: LangKevin/PostgresForAll
+  (private).
 - **Optional extras:** an app icon, plus code signing and notarisation if you share it
   outside the team.
 

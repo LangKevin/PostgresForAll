@@ -220,4 +220,17 @@ class PlatformParsingTest {
         assertThat(code).isZero();
         assertThat(lines).contains("O:v1", "E:err");
     }
+
+    @org.junit.jupiter.api.Test
+    void brewServicesJson_keepsPostgresFormulae_withStartedState() {
+        var json = """
+                [{"name":"postgresql@16","status":"started","user":"me","file":"/x.plist","exit_code":0},
+                 {"name":"postgresql@14","status":"none","user":null,"file":null,"exit_code":null},
+                 {"name":"redis","status":"started","user":"me","file":"/r.plist","exit_code":0}]""";
+        var list = MacPostgresServices.parseBrewServicesJson(json);
+        org.assertj.core.api.Assertions.assertThat(list).containsExactly(
+                new MacPostgresServices.BrewService("postgresql@16", true),
+                new MacPostgresServices.BrewService("postgresql@14", false));
+        org.assertj.core.api.Assertions.assertThat(MacPostgresServices.parseBrewServicesJson("Error: not json")).isEmpty();
+    }
 }

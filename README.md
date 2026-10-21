@@ -31,6 +31,17 @@ Each OS must build its own app. The app isn't code-signed yet. On macOS, the fir
 you open it, right-click the app → **Open**. On Windows, SmartScreen may show
 "More info → Run anyway".
 
+## Testing
+
+- `./gradlew build` runs the unit and live-database tests. Live tests skip when the
+  configured server is down.
+- `tools/e2e/E2E.java` drives the real GUI end to end; usage is in its header comment.
+- CI (`.github/workflows/ci.yml`) runs everything on a GitHub macOS runner against a
+  Homebrew PostgreSQL, and builds the Windows exe. Each run's Artifacts include the
+  zipped `.app`, test reports and screenshots.
+- [MAC-TESTING.md](MAC-TESTING.md) has the short hands-on checklist for what CI can't
+  do: the admin password prompt, Finder, Docker Desktop.
+
 ## Settings
 
 Connection defaults are in `postgresconnect.config.json`. To get an editable copy, use

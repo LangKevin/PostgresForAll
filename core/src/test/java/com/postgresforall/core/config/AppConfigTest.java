@@ -53,10 +53,12 @@ class AppConfigTest {
 
     @Test
     void shippedConfig_isTheOneTestsUse() {
-        // The Gradle test task points POSTGRESCONNECT_CONFIG at the bundled config.
+        // The Gradle test task points POSTGRESCONNECT_CONFIG at the config in use
+        // (your data-folder copy, the bundled one, or CI's); tests read that file.
         assertThat(AppConfig.loadedFrom()).isPresent();
+        assertThat(AppConfig.loadedFrom().get().toString())
+                .isEqualTo(java.nio.file.Path.of(System.getenv("POSTGRESCONNECT_CONFIG")).toString());
         assertThat(AppConfig.current().port).isEqualTo(5444);
-        assertThat(AppConfig.current().servers).isNotEmpty();
     }
 
     @Test

@@ -24,10 +24,18 @@ import java.util.List;
 public final class LaunchdServiceHost implements ServerHost {
     private final String label;
     private final ProcessRunner runner;
+    /**
+     * "postgresql@16" for a Homebrew job. Taken from the label, not the plist,
+     * because `brew services stop` deletes the plist and a stopped Homebrew
+     * server must still be startable.
+     */
+    private final String formula;
 
     public LaunchdServiceHost(String label, ProcessRunner runner) {
         this.label = label;
         this.runner = runner != null ? runner : new DefaultProcessRunner();
+        this.formula = label.startsWith(MacPostgresServices.HOMEBREW_PREFIX)
+                ? label.substring(MacPostgresServices.HOMEBREW_PREFIX.length()) : null;
     }
 
     private LaunchdJob job(CancelToken ct) {
@@ -56,12 +64,14 @@ public final class LaunchdServiceHost implements ServerHost {
 
     @Override
     public boolean needsElevation() {
+        if (formula != null) return false; // brew services runs in the user's own domain
         var j = job(CancelToken.NONE);
         return j != null && j.domain() == Domain.SYSTEM;
     }
 
     @Override
     public HostStatus status(CancelToken ct) {
+        if (formula != null) return homebrewStatus(ct);
         var j = job(ct);
         if (j == null) return new HostStatus(RunState.MISSING, "no launchd job definition found");
         Boolean running;
@@ -79,9 +89,9 @@ public final class LaunchdServiceHost implements ServerHost {
 
     @Override
     public ProcessResult start(CancelToken ct) {
+        if (formula != null) return brew("start", ct);
         var j = job(ct);
         if (j == null) return missing();
-        if (j.isHomebrew()) return brew("start", j, ct);
         var target = target(j);
         // bootstrap loads the job (an "already loaded" failure is fine); kickstart runs it.
         var commands = new ArrayList<List<String>>();
@@ -92,17 +102,17 @@ public final class LaunchdServiceHost implements ServerHost {
 
     @Override
     public ProcessResult stop(CancelToken ct) {
+        if (formula != null) return brew("stop", ct);
         var j = job(ct);
         if (j == null) return missing();
-        if (j.isHomebrew()) return brew("stop", j, ct);
         return runAll(j, List.of(List.of("/bin/launchctl", "bootout", target(j))), false, ct);
     }
 
     @Override
     public ProcessResult restart(CancelToken ct) {
+        if (formula != null) return brew("restart", ct);
         var j = job(ct);
         if (j == null) return missing();
-        if (j.isHomebrew()) return brew("restart", j, ct);
         return runAll(j, List.of(List.of("/bin/launchctl", "kickstart", "-k", target(j))), false, ct);
     }
 
@@ -111,8 +121,25 @@ public final class LaunchdServiceHost implements ServerHost {
         return null;
     }
 
-    private ProcessResult brew(String verb, LaunchdJob j, CancelToken ct) {
-        return runner.run("brew", List.of("services", verb, j.homebrewFormula()), Duration.ofMinutes(2), ct);
+    private ProcessResult brew(String verb, CancelToken ct) {
+        return runner.run("brew", List.of("services", verb, formula), Duration.ofMinutes(2), ct);
+    }
+
+    /** Running per launchctl; stopped when merely unloaded (brew deletes the plist on stop). */
+    private HostStatus homebrewStatus(CancelToken ct) {
+        var known = MacPostgresServices.brewServices(runner, ct).stream().anyMatch(b -> b.name().equals(formula));
+        if (!known) {
+            var installed = runner.run("brew", List.of("--prefix", formula), Duration.ofSeconds(20), ct);
+            if (installed.exitCode() != 0) {
+                return new HostStatus(RunState.MISSING, "Homebrew formula '" + formula + "' isn't installed");
+            }
+        }
+        var r = runner.run("launchctl", List.of("list"), Duration.ofSeconds(5), ct);
+        var running = MacPostgresServices.parseLaunchctlList(r.exitCode() == 0 ? r.stdOut() : null, label);
+        if (running == null) return new HostStatus(RunState.UNKNOWN, "unknown state");
+        var detail = "Homebrew formula: " + formula + " (brew services)";
+        return running ? new HostStatus(RunState.RUNNING, "running", detail)
+                : new HostStatus(RunState.STOPPED, "stopped", detail);
     }
 
     /**
