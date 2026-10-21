@@ -86,7 +86,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build and test (live-DB tests skip: no server on this runner)
+      - name: Build and test (live-DB tests skip - no server on this runner)
         run: ./gradlew build :app:jpackageImage --no-daemon
 
       - name: Console check runs
