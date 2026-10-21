@@ -1,0 +1,72 @@
+{
+  // PostgresForAll settings. Edit these values and restart the app to apply.
+  // This is the default copy bundled with the app. To change it, copy it to the
+  // per-user data folder (or beside the launcher) — that copy wins.
+  // (You can also point POSTGRESCONNECT_CONFIG at a config file elsewhere.)
+
+  // Host and port of the target PostgreSQL server.
+  // ScheduleMe runs in the Docker container scheduleme-postgres, published on
+  // host port :5444. Other Postgres servers on this machine, for reference:
+  //   :5432  native PostgreSQL 18 (only the 'postgres' DB; superuser login)
+  //   :5434  operationshub-postgres container (a different app, not ScheduleMe)
+  //   :55432 clinical-audit-db container
+  "Host": "localhost",
+  "Port": 5444,
+
+  // Default database / username / password pre-filled on the login screen.
+  // Password is plain text — only for a throwaway local-dev DB, and only in your
+  // own copy (Help → Edit Settings File), never in this bundled default. On this
+  // test box every server's superuser uses the same password: postgres (5432),
+  // scheduleme (5444), operationshub (5434), audit (55432).
+  "Database": "scheduleme",
+  "Username": "scheduleme",
+  "Password": "",
+
+  // The "Connect as > Superuser" preset on the login screen fills these in.
+  // No password here on purpose — type it, or tick "Remember password" to keep
+  // it in the OS secret store like any other login. SuperuserHost / SuperuserPort
+  // name the server where that role exists (blank / 0 = same as Host / Port);
+  // here 'postgres' lives on the native server.
+  "SuperuserUsername": "postgres",
+  "SuperuserDatabase": "postgres",
+  "SuperuserHost": "",
+  "SuperuserPort": 5432,
+
+  // Object Explorer lists several servers, like SSMS. A superuser login also
+  // looks for every other PostgreSQL server on this machine: native Windows
+  // services (Windows services / launchd jobs) plus a protocol handshake on DiscoveryPorts. No Docker needed —
+  // if Docker is installed it only adds container names as labels.
+  "DiscoverServers": true,
+
+  // Object Explorer hides a server's 'postgres' maintenance database when the
+  // server has other databases. Set false to always list it.
+  "HideMaintenanceDatabase": true,
+  "DiscoveryPorts": "5432-5450,55432",
+
+  // Extra servers to always list (any login). Only Host and Port are required.
+  // Username / Database are what the "connect" prompt pre-fills — each server
+  // has its own superuser, so name it here.
+  //   { "Name": "prod", "Host": "db.example.com", "Port": 5432, "Username": "admin" }
+  "Servers": [
+    { "Host": "localhost", "Port": 5432,  "Username": "postgres",      "Database": "postgres" },
+    { "Host": "localhost", "Port": 5434,  "Username": "operationshub", "Database": "postgres",
+      "DockerContainer": "operationshub-postgres" },
+    { "Host": "localhost", "Port": 5444,  "Username": "scheduleme",    "Database": "scheduleme",
+      "DockerContainer": "scheduleme-postgres" },
+    { "Host": "localhost", "Port": 55432, "Username": "audit",         "Database": "postgres",
+      "DockerContainer": "clinical-audit-db" }
+  ],
+
+  // Opt-in: pre-fill a discovered Docker container's login from its
+  // POSTGRES_USER / POSTGRES_PASSWORD (read via docker inspect). Off by default
+  // because it reads secrets out of containers.
+  "ReadDockerCredentials": false,
+
+  // Folder with pg_dump / pg_restore for Backup / Restore. Blank = search PATH,
+  // then the usual install folders, and use the newest version found.
+  "PgBinPath": "",
+
+  // Optional: Docker container behind Host:Port, for container diagnostics
+  // (status / logs / start-stop) when Docker is installed. Not required.
+  "DockerContainerName": "scheduleme-postgres"
+}

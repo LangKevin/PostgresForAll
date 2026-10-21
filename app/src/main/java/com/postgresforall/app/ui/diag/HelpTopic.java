@@ -1,0 +1,15 @@
+package com.postgresforall.app.ui.diag;
+
+public enum HelpTopic {
+    GENERAL,
+    DOCKER_NOT_INSTALLED,
+    DOCKER_NOT_RUNNING,
+    CONTAINER_NOT_FOUND,
+    CONTAINER_STOPPED,
+    SERVICE_STOPPED,
+    TCP_CLOSED,
+    AUTH_FAILED,
+    QUERY_FAILED,
+    OUT_OF_MEMORY,
+    CONNECTION_LIMIT
+}

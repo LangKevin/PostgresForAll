@@ -1,0 +1,18 @@
+{
+  // CI-only config: a throwaway Homebrew PostgreSQL on the CI Mac (see
+  // ci/mac-postgres-setup.sh). The password exists only on that runner.
+  "Host": "localhost",
+  "Port": 5444,
+  "Database": "scheduleme",
+  "Username": "scheduleme",
+  "Password": "ci-scheduleme-pass",
+  "SuperuserUsername": "scheduleme",
+  "SuperuserDatabase": "postgres",
+  "SuperuserHost": "",
+  "SuperuserPort": 0,
+  "DockerContainerName": "",
+  "Servers": [],
+  "DiscoverServers": true,
+  "DiscoveryPorts": "5432-5450",
+  "PgBinPath": ""
+}
