@@ -99,6 +99,13 @@ public final class AppConfig {
      */
     public boolean readDockerCredentials;
 
+    /**
+     * Tables at or above either size count as large: new indexes default to
+     * CREATE INDEX CONCURRENTLY and new FK / check constraints to NOT VALID + VALIDATE.
+     */
+    public long largeTableRows = 100_000;
+    public long largeTableBytes = 100L * 1024 * 1024;
+
     public static final String FILE_NAME = "postgresconnect.config.json";
     public static final String ENV_VAR_NAME = "POSTGRESCONNECT_CONFIG";
 

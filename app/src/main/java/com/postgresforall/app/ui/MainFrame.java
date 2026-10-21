@@ -1238,11 +1238,10 @@ public final class MainFrame extends JFrame {
                         () -> Ui.bg(this, () -> disconnectServer(server))));
             }
             disableWithoutClientTools(server, backup, restore);
-        } else if (node.kind == ExplorerNode.Kind.TABLE) {
-            menu.add(menuItem("Script as SELECT (LIMIT 1000)", null, () -> scriptTable(false)));
-            menu.add(menuItem("Script as CREATE", null, () -> scriptTable(true)));
-            menu.addSeparator();
-            menu.add(menuItem("Refresh", null, () -> explorer.refreshNode(node)));
+        } else if (TableDesignActions.handles(node.kind) && node.server != null) {
+            new TableDesignActions(this, explorer, output, this::showOutput,
+                    (sql, server, db) -> newQueryDocument(sql, null, server, db))
+                    .populate(menu, node, () -> scriptTable(false));
         } else {
             var refresh = menuItem("Refresh", null, () -> explorer.refreshNode(node));
             refresh.setEnabled(node.loader != null);

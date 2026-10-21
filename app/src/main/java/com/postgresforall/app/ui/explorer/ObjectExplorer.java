@@ -11,7 +11,10 @@ import com.postgresforall.core.platform.Platform;
 import com.postgresforall.core.service.ConnectionErrors;
 import com.postgresforall.core.service.ConnectionLease;
 import com.postgresforall.core.service.ConnectionManager;
+import com.postgresforall.core.model.TableObjects.ConstraintType;
+import com.postgresforall.core.service.DatabaseOperations;
 import com.postgresforall.core.service.SchemaInspector;
+import com.postgresforall.core.service.TableInspector;
 import com.postgresforall.core.service.ServerRegistry;
 import com.postgresforall.core.service.ServerSession;
 import com.postgresforall.core.service.ServerSession.State;
@@ -335,6 +338,68 @@ public final class ObjectExplorer implements AutoCloseable {
         return ctx == null ? null : ctx.inspector();
     }
 
+    /**
+     * Connection pool for {@code dbName} on {@code session} (the login database
+     * when null), opening a lease the first time. Null when it can't be opened.
+     * Call off the EDT.
+     */
+    public ConnectionManager managerFor(ServerSession session, String dbName) throws Exception {
+        var t = treeFor(session);
+        if (t == null) return null;
+        if (dbName == null || dbName.isBlank()) {
+            var login = session.login();
+            if (login == null) return t.manager;
+            dbName = login.database;
+        }
+        var ctx = getOrOpenContext(t, dbName);
+        return ctx == null ? null : ctx.lease().manager();
+    }
+
+    /**
+     * Selects {@code schema.table} in the same database as {@code near}, loading
+     * the schema's children first if needed. False when the schema isn't shown.
+     * Call on the EDT.
+     */
+    public boolean revealTable(ExplorerNode near, String schema, String table) {
+        var db = near;
+        while (db != null && db.kind != Kind.DATABASE) db = db.getParent() instanceof ExplorerNode p ? p : null;
+        if (db == null) return false;
+        ExplorerNode schemaNode = null;
+        for (var folder : children(db)) {
+            if (folder.kind != Kind.SCHEMAS_FOLDER) continue;
+            for (var sn : children(folder)) if (sn.kind == Kind.SCHEMA && sn.name.equals(schema)) schemaNode = sn;
+        }
+        if (schemaNode == null) return false;
+        var sn = schemaNode;
+        Runnable select = () -> {
+            for (var folder : children(sn)) {
+                if (folder.kind != Kind.TABLES_FOLDER) continue;
+                for (var tn : children(folder)) {
+                    if (tn.kind == Kind.TABLE && tn.name.equals(table)) {
+                        var path = pathOf(tn);
+                        tree.setSelectionPath(path);
+                        tree.scrollPathToVisible(path);
+                    }
+                }
+            }
+        };
+        if (sn.loaded) {
+            select.run();
+        } else {
+            afterLoad.put(sn, select);
+            startLoad(sn);
+        }
+        return true;
+    }
+
+    private static List<ExplorerNode> children(ExplorerNode n) {
+        var out = new ArrayList<ExplorerNode>();
+        for (var i = 0; i < n.getChildCount(); i++) {
+            if (n.getChildAt(i) instanceof ExplorerNode c) out.add(c);
+        }
+        return out;
+    }
+
     private ServerTree treeFor(ServerSession session) {
         var mgr = session.manager();
         if (closed || mgr == null) return null;
@@ -592,7 +657,7 @@ public final class ObjectExplorer implements AutoCloseable {
         var tablesFolder = ExplorerNode.folder(Kind.TABLES_FOLDER, "Tables (" + tables.size() + ")", dbName, session);
         for (var tb : tables) {
             tablesFolder.add(new ExplorerNode(Kind.TABLE, tb.name(), tb.kind(), tb, dbName, session)
-                    .withLoader(n -> loadColumns(n, ctx, dbName, session)));
+                    .withLoader(n -> loadTableChildren(n, ctx, dbName, session)));
         }
 
         var views = ctx.inspector().getViews(schema.name());
@@ -614,19 +679,122 @@ public final class ObjectExplorer implements AutoCloseable {
         return List.of(tablesFolder, viewsFolder, fnFolder);
     }
 
-    private List<ExplorerNode> loadColumns(ExplorerNode tableNode, DatabaseContext ctx, String dbName,
-                                           ServerSession session) throws Exception {
-        var tb = (TableInfo) tableNode.payload;
-        var cols = ctx.inspector().getColumns(tb.schema(), tb.name());
-        var folder = ExplorerNode.folder(Kind.COLUMNS_FOLDER, "Columns (" + cols.size() + ")", dbName, session);
-        for (var c : cols) {
-            var pk = "";
-            var nn = c.isNullable() ? "" : " NOT NULL";
-            var n = new ExplorerNode(Kind.COLUMN, c.name() + pk, c.dataType() + nn, c, dbName, session);
-            n.loaded = true;
-            folder.add(n);
+    /** Run once a node's next load lands (see {@link #revealTable}). */
+    private final Map<ExplorerNode, Runnable> afterLoad = new ConcurrentHashMap<>();
+
+    /** Folder to open after the next reload of a table (set by {@link #refreshTable}). */
+    private final Map<ExplorerNode, Kind> reopenAfterReload = new ConcurrentHashMap<>();
+
+    /**
+     * Reloads one table's folders (after a structure change) and opens the folder
+     * of the kind that changed. Call on the EDT.
+     */
+    public void refreshTable(ExplorerNode tableNode, Kind folderToOpen) {
+        if (folderToOpen != null) {
+            reopenAfterReload.put(tableNode, folderToOpen);
+            afterLoad.put(tableNode, () -> {
+                for (var f : children(tableNode)) {
+                    if (f.kind != folderToOpen) continue;
+                    var kids = children(f);
+                    tree.scrollPathToVisible(pathOf(kids.isEmpty() ? f : kids.getLast()));
+                    tree.scrollPathToVisible(pathOf(f));
+                }
+            });
         }
-        return List.of(folder);
+        refreshNode(tableNode);
+    }
+
+    /** A table's structure: columns, keys, constraints, indexes, triggers, inbound foreign keys. */
+    private List<ExplorerNode> loadTableChildren(ExplorerNode tableNode, DatabaseContext ctx, String dbName,
+                                                 ServerSession session) throws Exception {
+        var tb = (TableInfo) tableNode.payload;
+        var ti = new TableInspector(ctx.lease().manager());
+        var s = tb.schema();
+        var t = tb.name();
+        var open = reopenAfterReload.remove(tableNode);
+
+        var columns = ti.columns(s, t);
+        var colFolder = tableFolder(Kind.COLUMNS_FOLDER, "Columns", columns.size(), tb, dbName, session, open);
+        for (var c : columns) {
+            var detail = new StringBuilder(c.dataType());
+            if (!c.nullable()) detail.append(" NOT NULL");
+            if (c.identity() != null) detail.append(" · identity");
+            if (c.generated() != null) detail.append(" · generated");
+            leaf(colFolder, Kind.COLUMN, c.name(), detail.toString(), c, dbName, session, null);
+        }
+
+        var constraints = ti.constraints(s, t);
+        var keys = constraints.stream().filter(c -> c.type() == ConstraintType.PRIMARY_KEY || c.type() == ConstraintType.FOREIGN_KEY).toList();
+        var others = constraints.stream().filter(c -> c.type() != ConstraintType.PRIMARY_KEY && c.type() != ConstraintType.FOREIGN_KEY).toList();
+        var keyFolder = tableFolder(Kind.KEYS_FOLDER, "Keys", keys.size(), tb, dbName, session, open);
+        for (var c : keys) {
+            var pk = c.type() == ConstraintType.PRIMARY_KEY;
+            var detail = pk ? "PRIMARY KEY (" + String.join(", ", c.columns()) + ")"
+                    : "(" + String.join(", ", c.columns()) + ") → " + c.refSchema() + "." + c.refTable()
+                    + "(" + String.join(", ", c.refColumns()) + ")"
+                    + (!"NO ACTION".equals(c.onDelete()) ? " · ON DELETE " + c.onDelete() : "");
+            leaf(keyFolder, pk ? Kind.PRIMARY_KEY : Kind.FOREIGN_KEY, c.name(),
+                    detail + (c.validated() ? "" : " · NOT VALID"), c, dbName, session,
+                    c.validated() ? null : Palette.disabled());
+        }
+        var conFolder = tableFolder(Kind.CONSTRAINTS_FOLDER, "Constraints", others.size(), tb, dbName, session, open);
+        for (var c : others) {
+            var kind = switch (c.type()) {
+                case UNIQUE -> Kind.UNIQUE;
+                case CHECK -> Kind.CHECK;
+                default -> Kind.EXCLUSION;
+            };
+            leaf(conFolder, kind, c.name(), c.definition() + (c.validated() ? "" : " · NOT VALID"), c, dbName, session,
+                    c.validated() ? null : Palette.disabled());
+        }
+
+        var indexes = ti.indexes(s, t);
+        var ixFolder = tableFolder(Kind.INDEXES_FOLDER, "Indexes", indexes.size(), tb, dbName, session, open);
+        for (var ix : indexes) {
+            var detail = new StringBuilder(ix.method());
+            if (ix.primary()) detail.append(" · primary");
+            else if (ix.unique()) detail.append(" · unique");
+            detail.append(" · (").append(String.join(", ", ix.keys())).append(")");
+            if (ix.predicate() != null) detail.append(" WHERE ").append(ix.predicate());
+            detail.append(" · ").append(DatabaseOperations.formatBytes(ix.sizeBytes()))
+                    .append(" · ").append(ix.scans()).append(" scans");
+            if (!ix.valid()) detail.append(" · INVALID");
+            leaf(ixFolder, Kind.INDEX, ix.name(), detail.toString(), ix, dbName, session,
+                    ix.valid() ? null : Palette.danger());
+        }
+
+        var triggers = ti.triggers(s, t);
+        var trFolder = tableFolder(Kind.TRIGGERS_FOLDER, "Triggers", triggers.size(), tb, dbName, session, open);
+        for (var tr : triggers) {
+            var detail = tr.timing() + " " + String.join(" OR ", tr.events()) + " · FOR EACH " + tr.level()
+                    + " · " + tr.function() + (tr.enabled() ? "" : " · disabled");
+            leaf(trFolder, Kind.TRIGGER, tr.name(), detail, tr, dbName, session, tr.enabled() ? null : Palette.disabled());
+        }
+
+        var refs = ti.referencedBy(s, t);
+        var refFolder = tableFolder(Kind.REFERENCED_BY_FOLDER, "Referenced by", refs.size(), tb, dbName, session, open);
+        for (var r : refs) {
+            leaf(refFolder, Kind.REFERENCING_FK, r.schema() + "." + r.table(),
+                    r.constraintName() + " (" + String.join(", ", r.columns()) + ")", r, dbName, session, null);
+        }
+        return List.of(colFolder, keyFolder, conFolder, ixFolder, trFolder, refFolder);
+    }
+
+    private static ExplorerNode tableFolder(Kind kind, String label, int count, TableInfo table, String dbName,
+                                            ServerSession session, Kind open) {
+        // The folder's payload is its table, so "New …" actions on the folder know the target.
+        var f = new ExplorerNode(kind, label + " (" + count + ")", null, table, dbName, session);
+        f.loaded = true;
+        f.expandOnShow = kind == open;
+        return f;
+    }
+
+    private static void leaf(ExplorerNode parent, Kind kind, String name, String detail, Object payload, String dbName,
+                             ServerSession session, java.awt.Color color) {
+        var n = new ExplorerNode(kind, name, detail, payload, dbName, session);
+        n.loaded = true;
+        n.foreground = color;
+        parent.add(n);
     }
 
     private List<ExplorerNode> loadRoles(ServerTree t) throws Exception {
@@ -672,6 +840,8 @@ public final class ObjectExplorer implements AutoCloseable {
                 model.nodeStructureChanged(node);
                 tree.expandPath(pathOf(node));
                 expandRequested(result);
+                var then = afterLoad.remove(node);
+                if (then != null) then.run();
             });
         });
     }

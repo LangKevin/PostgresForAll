@@ -97,6 +97,19 @@ group opens expanded. Group nodes are `Kind.SERVER`, so they get the server cont
    `withLoader(...)`; set `server` (and `databaseName` under a database) on every node.
 4. Add an `ExplorerNode.Kind` and branch in `MainFrame.buildContextMenu` / `onTreeDoubleClick`.
 
+## Table structure editing
+
+- **Right-click menus:** every table and its structure folders (Columns, Keys, Constraints, Indexes, Triggers, Referenced by) have create / edit / rename / drop actions. They're wired in `ui/TableDesignActions`.
+- **Dialogs:** they live in `ui/design`. Each extends `ChangeDialog`, which shows the SQL preview plus the lock each statement takes, and offers Apply / Open in query tab / Cancel. Dialogs only build statements; they never run them.
+- **Core:**
+  - `TableInspector` handles catalog reads and `scriptCreate`.
+  - `DependencyInspector` reports what would break.
+  - `DdlBuilder` produces SQL as `DdlStatement`, each carrying its lock level and whether it can run in a transaction.
+  - `DdlApplier` runs one transaction with `SET LOCAL lock_timeout = '5s'`, then the CONCURRENTLY statements in autocommit.
+- **After Apply:** the table node reloads through `ObjectExplorer.refreshTable(node, folderKind)`.
+- **Large tables:** at or above `LargeTableRows` / `LargeTableBytes` in the config, the dialogs default to CONCURRENTLY or NOT VALID.
+- **Tests:** `TableStructureLiveTest` creates and drops its own `pfa_tbl_*` databases. The E2E creates and drops `public.pfa_e2e_design`.
+
 ## Connection defaults
 
 From `postgresconnect.config.json`: ScheduleMe at `localhost:5444` (Docker container

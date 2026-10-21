@@ -133,6 +133,9 @@ public class E2E {
         check("table script ran", scripted.editor().getText().contains("FROM \"public\".\"users\""));
         shot(main, "07-table-script");
 
+        // ---- Table structure: add an index through the dialog, then drop it --------
+        tableDesign(main, tree, tab);
+
         // ---- Explorer filter -------------------------------------------------------
         edt(() -> find(main, JTextField.class, f -> "Filter loaded objects".equals(
                 f.getClientProperty("JTextField.placeholderText"))).setText("tasks"));
@@ -202,6 +205,93 @@ public class E2E {
         Thread.sleep(4000);
         shot(diag, "13-diagnostics-logs");
         edt(diag::dispose);
+    }
+
+    /** Right-click CRUD on a throwaway table: New index → Apply → node appears → Drop. Cleans up after itself. */
+    static void tableDesign(Window main, JTree tree, QueryTab tab) throws Exception {
+        var t = "pfa_e2e_design";
+        runSql(tab, "DROP TABLE IF EXISTS public." + t + "; CREATE TABLE public." + t + " (id int PRIMARY KEY, name text);");
+        check("throwaway table created", !Ui.call(tab::messagesText).contains("ERROR"));
+        try {
+            var schema = node(tree, n -> n.kind == ExplorerNode.Kind.SCHEMA && n.name.equals("public"));
+            contextMenu(tree, schema);
+            clickMenu("Refresh");
+            var table = waitFor("new table node", () -> node(tree, n -> n.kind == ExplorerNode.Kind.TABLE && n.name.equals(t)), 20000);
+            expand(tree, n -> n == table);
+            var cols = waitFor("columns folder", () -> node(tree, n -> n.kind == ExplorerNode.Kind.COLUMNS_FOLDER && n.getParent() == table), 10000);
+            check("columns folder counts 2 (" + cols.name + ")", cols.name.equals("Columns (2)"));
+            check("primary key listed under Keys", node(tree, n -> n.kind == ExplorerNode.Kind.PRIMARY_KEY && n.getParent().getParent() == table) != null);
+
+            contextMenu(tree, table);
+            shot(Ui.call(E2E::findPopup), "14-table-menu");
+            clickMenu("New index…");
+            Window dlg = waitWindow(w -> w instanceof JDialog d && d.isShowing() && "New index".equals(d.getTitle()), 20000);
+            edt(() -> find(dlg, AbstractButton.class, b -> "Add column as a key".equals(b.getToolTipText())).doClick());
+            Thread.sleep(500);
+            shot(dlg, "15-new-index-dialog");
+            edt(() -> find(dlg, JButton.class, b -> "Apply".equals(b.getText())).doClick());
+
+            var idx = waitFor("new index node", () -> node(tree, n -> n.kind == ExplorerNode.Kind.INDEX
+                    && n.getParent().getParent() != null && ((ExplorerNode) n.getParent().getParent()).name.equals(t)
+                    && !n.name.endsWith("_pkey")), 30000);
+            check("index created (" + idx.name + ")", idx.name.contains(t));
+            Thread.sleep(500);
+            shot(main, "16-index-created");
+
+            contextMenu(tree, idx);
+            clickMenu("Drop index…");
+            Window drop = waitWindow(w -> w instanceof JDialog d && d.isShowing() && "Drop index".equals(d.getTitle()), 20000);
+            edt(() -> find(drop, JTextField.class, f -> idx.name.equals(f.getClientProperty("JTextField.placeholderText"))).setText(idx.name));
+            Thread.sleep(300);
+            shot(drop, "17-drop-index-dialog");
+            edt(() -> find(drop, JButton.class, b -> "Drop".equals(b.getText())).doClick());
+            waitFor("index folder back to 1", () -> node(tree, n -> n.kind == ExplorerNode.Kind.INDEXES_FOLDER
+                    && n.getParent() != null && ((ExplorerNode) n.getParent()).name.equals(t) && n.name.equals("Indexes (1)")), 30000);
+            check("index dropped", true);
+        } finally {
+            runSql(tab, "DROP TABLE IF EXISTS public." + t + ";");
+        }
+    }
+
+    /** Opens the tree's context menu on {@code n}, the way a right-click does on this OS. */
+    static void contextMenu(JTree tree, ExplorerNode n) throws Exception {
+        edt(() -> {
+            var path = new TreePath(((DefaultTreeModel) tree.getModel()).getPathToRoot(n));
+            tree.setSelectionPath(path);
+            tree.scrollPathToVisible(path);
+            var r = tree.getPathBounds(path);
+            for (var id : new int[]{MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_RELEASED}) {
+                var e = new MouseEvent(tree, id, System.currentTimeMillis(), 0, r.x + 5, r.y + 5, 1, true, MouseEvent.BUTTON3);
+                for (var l : tree.getMouseListeners()) {
+                    if (id == MouseEvent.MOUSE_PRESSED) l.mousePressed(e); else l.mouseReleased(e);
+                }
+                if (findPopup() != null) break; // macOS opens on press, Windows on release
+            }
+        });
+        waitFor("context menu", () -> Ui.call(E2E::findPopup), 10000);
+    }
+
+    static JPopupMenu findPopup() {
+        for (var w : Window.getWindows()) {
+            if (!w.isShowing()) continue;
+            var pm = findOrNull(w instanceof RootPaneContainer r ? r.getRootPane() : (Container) w, JPopupMenu.class, Component::isShowing);
+            if (pm != null) return pm;
+        }
+        return null;
+    }
+
+    static void clickMenu(String text) throws Exception {
+        var mi = waitFor("menu item '" + text + "'", () -> Ui.call(() -> {
+            var pm = findPopup();
+            if (pm == null) return null;
+            for (var c : pm.getComponents()) if (c instanceof JMenuItem m && text.equals(m.getText()) && m.isEnabled()) return m;
+            return null;
+        }), 10000);
+        edt(() -> {
+            mi.doClick();
+            var pm = findPopup();
+            if (pm != null) pm.setVisible(false);
+        });
     }
 
     // ---- helpers -----------------------------------------------------------

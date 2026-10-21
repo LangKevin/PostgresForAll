@@ -5,6 +5,8 @@ import com.postgresforall.app.ui.Palette;
 import com.postgresforall.app.ui.explorer.ExplorerNode.Kind;
 import com.postgresforall.app.ui.theme.Icons;
 import com.postgresforall.core.model.SchemaNodes.ColumnInfo;
+import com.postgresforall.core.model.TableObjects.ColumnDetail;
+import com.postgresforall.core.model.TableObjects.IndexDetail;
 import com.postgresforall.core.model.SchemaNodes.DatabaseInfo;
 
 import javax.swing.BorderFactory;
@@ -113,6 +115,15 @@ final class ExplorerRenderer extends JPanel implements TreeCellRenderer {
     private static final FlatSVGIcon DB = Icons.get("database", SIZE);
     private static final FlatSVGIcon DB_LOGIN = Icons.tinted("database", SIZE, Palette::accent);
     private static final FlatSVGIcon DB_OFFLINE = Icons.tinted("lock", SIZE, Palette::disabled);
+    private static final FlatSVGIcon FK = Icons.tinted("link", SIZE, Palette::notice);
+    private static final FlatSVGIcon UNIQUE_ICON = Icons.get("square-check", SIZE);
+    private static final FlatSVGIcon CHECK_ICON = Icons.get("list-checks", SIZE);
+    private static final FlatSVGIcon EXCLUSION_ICON = Icons.get("ban", SIZE);
+    private static final FlatSVGIcon INDEX_ICON = Icons.get("list-ordered", SIZE);
+    private static final FlatSVGIcon INDEX_INVALID = Icons.tinted("list-ordered", SIZE, Palette::danger);
+    private static final FlatSVGIcon TRIGGER_ON = Icons.tinted("zap", SIZE, Palette::caution);
+    private static final FlatSVGIcon TRIGGER_OFF = Icons.tinted("zap-off", SIZE, Palette::disabled);
+    private static final FlatSVGIcon REFERENCED_BY = Icons.get("corner-up-left", SIZE);
 
     private static Icon iconFor(ExplorerNode n) {
         return switch (n.kind) {
@@ -123,12 +134,22 @@ final class ExplorerRenderer extends JPanel implements TreeCellRenderer {
             };
             case DATABASE -> n.payload instanceof DatabaseInfo d && !d.allowConnections() ? DB_OFFLINE
                     : n.name.endsWith("(connected)") ? DB_LOGIN : DB;
-            case DATABASES_FOLDER, SCHEMAS_FOLDER, TABLES_FOLDER, VIEWS_FOLDER, FUNCTIONS_FOLDER, COLUMNS_FOLDER -> FOLDER;
+            case DATABASES_FOLDER, SCHEMAS_FOLDER, TABLES_FOLDER, VIEWS_FOLDER, FUNCTIONS_FOLDER, COLUMNS_FOLDER,
+                 KEYS_FOLDER, CONSTRAINTS_FOLDER, INDEXES_FOLDER, TRIGGERS_FOLDER -> FOLDER;
+            case REFERENCED_BY_FOLDER -> REFERENCED_BY;
+            case PRIMARY_KEY -> KEY;
+            case FOREIGN_KEY, REFERENCING_FK -> FK;
+            case UNIQUE -> UNIQUE_ICON;
+            case CHECK -> CHECK_ICON;
+            case EXCLUSION -> EXCLUSION_ICON;
+            case INDEX -> n.payload instanceof IndexDetail ix && !ix.valid() ? INDEX_INVALID : INDEX_ICON;
+            case TRIGGER -> n.foreground != null ? TRIGGER_OFF : TRIGGER_ON;
             case SCHEMA -> SCHEMA;
             case TABLE -> TABLE;
             case VIEW -> VIEW;
             case FUNCTION -> FUNCTION;
-            case COLUMN -> n.payload instanceof ColumnInfo c && c.isPrimaryKey() ? KEY : COLUMN;
+            case COLUMN -> n.payload instanceof ColumnInfo c && c.isPrimaryKey()
+                    || n.payload instanceof ColumnDetail d && d.primaryKey() ? KEY : COLUMN;
             case SECURITY_FOLDER -> SHIELD;
             case ROLES_FOLDER -> USERS;
             case ROLE -> USER;
