@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- PostgresForAll app icon: a database on Postgres blue, with a "for all" (∀) badge.
+       Master for every size; regenerate with installer/icon/MakeIcons.java. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4A86C2"/>
+      <stop offset="1" stop-color="#26557F"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+
+  <!-- Database cylinder -->
+  <path d="M50 74 V176 A72 23 0 0 0 194 176 V74 Z" fill="#FFFFFF"/>
+  <ellipse cx="122" cy="74" rx="72" ry="23" fill="#DCE8F4"/>
+  <path d="M50 108 A72 23 0 0 0 194 108" fill="none" stroke="#2F6496" stroke-width="8"/>
+  <path d="M50 142 A72 23 0 0 0 194 142" fill="none" stroke="#2F6496" stroke-width="8"/>
+
+  <!-- "For all" badge -->
+  <circle cx="192" cy="192" r="50" fill="#F2A93B" stroke="#FFFFFF" stroke-width="9"/>
+  <path d="M167 167 L192 221 L217 167 M175 186 H209" fill="none" stroke="#FFFFFF" stroke-width="11"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

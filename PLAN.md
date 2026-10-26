@@ -37,7 +37,9 @@ logins carry over.
   discovery and start/stop, Keychain-saved logins, the admin prompt via osascript, `lsof`
   port owners, and Docker Desktop launch. None of this could run on this Windows machine;
   only the plist and `lsof` parsing is covered by tests.
-- **Decide distribution format:** installer (WiX `.msi` / `.dmg`) or portable zip.
+- ~~**Decide distribution format:**~~ done. A per-user MSI and a DMG are built by
+  `./gradlew :app:jpackageInstaller` and published by the release workflow (see
+  [INSTALLER-PLAN.md](INSTALLER-PLAN.md) and [installer/](installer/README.md)).
 - **CI:** set up 2026-10-21. GitHub Actions runs a macOS job (Homebrew Postgres as a
   launchd job, full tests incl. the Mac-only `MacPlatformIT`, the packaged `.app`, and the
   GUI end-to-end test) and a Windows job (build plus exe). Repo: LangKevin/PostgresForAll

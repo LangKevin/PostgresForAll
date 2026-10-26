@@ -12,6 +12,7 @@ import com.postgresforall.app.ui.diagram.RelationshipDiagramTab;
 import com.postgresforall.app.ui.explorer.ExplorerNode;
 import com.postgresforall.app.ui.explorer.ObjectExplorer;
 import com.postgresforall.app.ui.query.QueryTab;
+import com.postgresforall.app.ui.theme.AppIcon;
 import com.postgresforall.app.ui.theme.Icons;
 import com.postgresforall.app.ui.theme.Theme;
 import com.postgresforall.core.config.AppConfig;
@@ -133,6 +134,7 @@ public final class MainFrame extends JFrame {
     public MainFrame(ServerRegistry registry, ServerSession primary, ConnectionProfile primaryLogin,
                      boolean discoverServers, PasswordStore passwordStore) {
         super("PostgresForAll");
+        AppIcon.apply(this);
         this.registry = registry;
         this.primary = primary;
         this.primaryLogin = primaryLogin;

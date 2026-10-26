@@ -18,12 +18,20 @@ Leave the original C# app untouched.
 ./gradlew :core:test --tests '*QueryExecutorTest'
 ./gradlew :app:run                   # launch the GUI
 ./gradlew :app:run --args="--check"  # console health check (exit codes 0, 2-7)
-./gradlew :app:jpackageImage         # self-contained app for this OS → app/build/jpackage/
+./gradlew :app:jpackageImage         # portable self-contained app for this OS → app/build/jpackage/
+./gradlew :app:jpackageInstaller     # MSI (Windows, per-user) / DMG (macOS) → app/build/installer/
+./gradlew :app:verifyRuntime         # GUI E2E on the trimmed bundled runtime (needs the E2E env)
 java -Dpfa.theme=dark -cp "app/build/install/PostgresForAll/lib/*" tools/e2e/E2E.java shots   # GUI E2E (after installDist)
 ```
 
 Java 21 (Gradle toolchain); Gradle 8.14 via the wrapper — no global Gradle needed.
 `jpackage` can't cross-build: build the `.app` on a Mac, the `.exe` on Windows.
+
+**Packaging lives in `installer/`** (see its README):
+- **What's there:** `installer.gradle.kts` is applied from `app/build.gradle.kts`. The folder also holds the icon master and generated icons, smoke tests and release notes.
+- **Runtime:** the trimmed runtime's modules are `runtimeModules` there. Run `verifyRuntime` after adding a library.
+- **Releases:** `.github/workflows/release.yml` runs on `v*` tags.
+- **MSI rules:** the build needs WiX 3, and downloads it if missing. Versions must keep increasing. Never change `windowsUpgradeUuid`.
 
 ## Layout
 

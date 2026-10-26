@@ -13,23 +13,26 @@ You need JDK 21. The Gradle wrapper downloads Gradle itself.
 ./gradlew :app:run --args="--check"    # console health check
 ```
 
-## Build an app you can double-click
+## Install
+
+Download the installer for your OS from the repository's **Releases** page:
+- **Windows:** `PostgresForAll-<version>-x64.msi` installs for your user, with no admin prompt.
+- **macOS:** `PostgresForAll-<version>-arm64.dmg`. Drag the app onto Applications.
+
+Neither installer is code-signed yet. [installer/RELEASE-NOTES.md](installer/RELEASE-NOTES.md)
+explains the one-time SmartScreen / Gatekeeper step, upgrades and uninstalling.
+
+## Build the installers or a portable app
 
 ```bash
-./gradlew :app:jpackageImage
+./gradlew :app:jpackageInstaller   # MSI on Windows, DMG on macOS → app/build/installer/
+./gradlew :app:jpackageImage       # portable app, no install → app/build/jpackage/
 ```
 
-This builds a self-contained app with its own Java runtime, so users don't need Java
-installed:
-
-| Built on | Output |
-|---|---|
-| Windows | `app/build/jpackage/PostgresForAll/PostgresForAll.exe` (copy the whole folder), plus `PostgresForAll-check.exe` for the console check |
-| macOS | `app/build/jpackage/PostgresForAll.app` |
-
-Each OS must build its own app. The app isn't code-signed yet. On macOS, the first time
-you open it, right-click the app → **Open**. On Windows, SmartScreen may show
-"More info → Run anyway".
+- **Self-contained:** both bundle a trimmed Java runtime, so users don't need Java.
+- **Build per OS:** each OS must build its own installer.
+- **Releasing:** pushing a `v*` tag builds, smoke-tests and publishes both installers.
+- **Details:** packaging code and docs are in [installer/](installer/README.md).
 
 ## Testing
 
@@ -39,6 +42,8 @@ you open it, right-click the app → **Open**. On Windows, SmartScreen may show
 - CI (`.github/workflows/ci.yml`) runs everything on a GitHub macOS runner against a
   Homebrew PostgreSQL, and builds the Windows exe. Each run's Artifacts include the
   zipped `.app`, test reports and screenshots.
+- `installer/windows/smoke-test.ps1` and `installer/macos/smoke-test.sh` install a built
+  installer and check it. The release workflow runs both.
 - [MAC-TESTING.md](MAC-TESTING.md) has the short hands-on checklist for what CI can't
   do: the admin password prompt, Finder, Docker Desktop.
 

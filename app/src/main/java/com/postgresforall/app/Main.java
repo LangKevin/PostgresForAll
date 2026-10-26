@@ -4,6 +4,7 @@ import com.postgresforall.app.cli.CheckCommand;
 import com.postgresforall.app.ui.LoginDialog;
 import com.postgresforall.app.ui.MainFrame;
 import com.postgresforall.app.ui.Ui;
+import com.postgresforall.app.ui.theme.AppIcon;
 import com.postgresforall.app.ui.theme.Theme;
 import com.postgresforall.core.config.AppConfig;
 import com.postgresforall.core.model.DiscoveredServer;
@@ -46,6 +47,7 @@ public final class Main {
         // Dark by default; View > Appearance switches to light or follow-system (and is remembered).
         var appearance = AppSettings.load().appearance;
         Theme.init(appearance == null || appearance.isBlank() ? Theme.Mode.DARK : Theme.Mode.parse(appearance));
+        AppIcon.applyToTaskbar();
 
         var passwords = new PasswordStore();
         var login = new LoginDialog(passwords);

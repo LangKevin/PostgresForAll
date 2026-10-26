@@ -83,6 +83,7 @@ public final class LoginDialog extends JDialog {
         super((java.awt.Frame) null, "Connect to PostgreSQL Server", ModalityType.APPLICATION_MODAL);
         this.store = store;
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        com.postgresforall.app.ui.theme.AppIcon.apply(this);
 
         tabs.addTab("Login", loginTab());
         tabs.addTab("Diagnostics", diagHost);
