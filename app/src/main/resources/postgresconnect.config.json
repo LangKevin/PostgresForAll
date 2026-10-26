@@ -15,9 +15,7 @@
 
   // Default database / username / password pre-filled on the login screen.
   // Password is plain text — only for a throwaway local-dev DB, and only in your
-  // own copy (Help → Edit Settings File), never in this bundled default. On this
-  // test box every server's superuser uses the same password: postgres (5432),
-  // scheduleme (5444), operationshub (5434), audit (55432).
+  // own copy (Help → Edit Settings File), never in this bundled default.
   "Database": "scheduleme",
   "Username": "scheduleme",
   "Password": "",

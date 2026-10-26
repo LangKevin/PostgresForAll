@@ -65,3 +65,7 @@ Connection defaults are in `postgresconnect.config.json`. To get an editable cop
 | 5 | Docker is down |
 | 6 | The container is missing |
 | 7 | The server didn't come up after `--start` |
+
+## License
+
+MIT — see [LICENSE](LICENSE). Icons are from [Lucide](https://lucide.dev) (ISC).

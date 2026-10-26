@@ -1,6 +1,6 @@
 # PostgresForAll — Java port of PostGresConnect
 
-Port of `C:\Users\langk\test\PostGresConnect` (C# / .NET 8 / WPF, Windows-only) to Java so one
+Port of PostGresConnect (a separate C# / .NET 8 / WPF, Windows-only project) to Java so one
 codebase ships as a native app on **Windows (.exe / .msi)** and **macOS (.app / .dmg)**.
 
 ## Status (2026-10-21)

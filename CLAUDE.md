@@ -5,7 +5,7 @@ Guidance for Claude Code when working in this repository.
 ## What this is
 
 PostgresForAll: a cross-platform (Windows + macOS) Java port of PostGresConnect
-(`C:\Users\langk\test\PostGresConnect`, C# / WPF, Windows-only), an SSMS-style
+(a separate C# / WPF, Windows-only project kept outside this repository), an SSMS-style
 PostgreSQL client: Object Explorer on the left, tabbed SQL editor with result grids on
 the right, DB Operations Output at the bottom. Targets the ScheduleMe database by default.
 Leave the original C# app untouched.

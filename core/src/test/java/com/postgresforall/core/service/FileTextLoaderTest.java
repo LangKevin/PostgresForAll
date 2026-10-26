@@ -48,9 +48,12 @@ class FileTextLoaderTest {
         assertThatThrownBy(() -> FileTextLoader.readText(f)).isInstanceOf(IllegalStateException.class);
     }
 
+    /** Opt-in: point PFA_SCHEMA_FILE at a large real schema script to exercise the loader on it. */
     @Test
     void readText_loadsScheduleMeSchemaFile_whenPresent() throws Exception {
-        var path = Path.of("C:\\Users\\langk\\test\\ScheduleMeBackend\\scripts\\scheduleme-schema-gui.sql");
+        var env = System.getenv("PFA_SCHEMA_FILE");
+        assumeTrue(env != null && !env.isBlank(), "PFA_SCHEMA_FILE not set");
+        var path = Path.of(env);
         assumeTrue(Files.isRegularFile(path), "reference schema file not on this machine");
         var text = FileTextLoader.readText(path);
         assertThat(text).isNotBlank().contains("ScheduleMe");

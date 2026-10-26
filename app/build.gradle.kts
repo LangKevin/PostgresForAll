@@ -33,3 +33,8 @@ tasks.jar {
 // Trimmed runtime, app image (jpackageImage) and installers (jpackageInstaller):
 // see installer/installer.gradle.kts and installer/README.md.
 apply(from = rootProject.file("installer/installer.gradle.kts"))
+
+// The zip/tar bundles of the plain application plugin aren't used (installers
+// and app images come from installer/); skip the 54 MB they'd add to every build.
+tasks.named("distZip") { enabled = false }
+tasks.named("distTar") { enabled = false }
